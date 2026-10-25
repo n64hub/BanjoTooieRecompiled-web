@@ -9,7 +9,8 @@
 # The page needs its own recompiled code: N64Recomp patched by patches/N64Recomp.patch and by N64Recomp-browser, whose
 # C writes the tail calls as return_calls and keeps the FPU's rounding mode for float-to-int conversions, which
 # WebAssembly's own instructions can't. So this makes it from the ROM as tools/autostub.py does, into
-# build/RecompiledFuncs-web, and the desktop build keeps RecompiledFuncs/.
+# build/RecompiledFuncs-web, and the desktop's RecompiledFuncs/ is upstream N64Recomp's (README.md, Building). The audio
+# microcode, rsp/n_aspMain.cpp, is RSPRecomp's, which neither patches, so the two builds share it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
@@ -65,7 +66,7 @@ if [ ! -f build/N64Recomp/build.ninja ]; then
     cmake -S lib/N64Recomp -B build/N64Recomp -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER="${HOST_CC:-clang}" -DCMAKE_CXX_COMPILER="${HOST_CXX:-clang++}" > /dev/null
 fi
-cmake --build build/N64Recomp --target N64RecompCLI
+cmake --build build/N64Recomp --target N64RecompCLI RSPRecomp
 
 if [ -n "$ROM" ]; then
     [ -f "$ROM" ] || fail "no file at $ROM."
@@ -96,6 +97,15 @@ for file in build/RecompiledFuncs-web/*; do
     [ -e "build/RecompiledFuncs-web.new/${file##*/}" ] || rm "$file"
 done
 rm -rf build/RecompiledFuncs-web.new
+
+step "Recompiling the audio microcode"
+sed -e 's|^output_file_path = .*|output_file_path = "n_aspMain.cpp.new"|' \
+    -e 's|= "build/|= "|' n_aspMain.us.toml > build/n_aspMain.us.web.toml
+build/N64Recomp/RSPRecomp build/n_aspMain.us.web.toml > build/rsp-recompile.log 2>&1 ||
+    { tail -20 build/rsp-recompile.log; fail "RSPRecomp failed (build/rsp-recompile.log)."; }
+mkdir -p rsp
+cmp -s build/n_aspMain.cpp.new rsp/n_aspMain.cpp || cp build/n_aspMain.cpp.new rsp/n_aspMain.cpp
+rm build/n_aspMain.cpp.new
 
 # ---------------------------------------------------------------- the page
 step "Building the page"

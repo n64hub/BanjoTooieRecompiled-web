@@ -49,16 +49,22 @@ if (EMSCRIPTEN)
     endif()
 endif()
 
-# The recompiled code. The page's is made by tools/build_web.sh from the player's ROM, with N64Recomp patched by
-# N64Recomp-browser too (its tail calls and float rounding), into build/RecompiledFuncs-web.
+# The recompiled code, made from the player's ROM and never committed (README.md, What Is Not Committed): the
+# desktop's by N64Recomp with patches/ into RecompiledFuncs/ (README.md, Building), the page's by tools/build_web.sh
+# with N64Recomp patched by N64Recomp-browser too (its tail calls and float rounding), into build/RecompiledFuncs-web.
+# Both take the audio microcode, rsp/n_aspMain.cpp, from RSPRecomp, which neither patches.
 if (EMSCRIPTEN)
     set(TOOIE_RECOMPILED_FUNCS ${CMAKE_SOURCE_DIR}/build/RecompiledFuncs-web)
-    if (NOT EXISTS ${TOOIE_RECOMPILED_FUNCS}/funcs.h)
-        message(FATAL_ERROR "No ${TOOIE_RECOMPILED_FUNCS}: build the page with tools/build_web.sh (BUILDING.md)")
-    endif()
+    set(TOOIE_RECOMPILE_HOW "build the page with tools/build_web.sh (BUILDING.md)")
 else()
     set(TOOIE_RECOMPILED_FUNCS ${CMAKE_SOURCE_DIR}/RecompiledFuncs)
+    set(TOOIE_RECOMPILE_HOW "make it from your ROM first (README.md, Building)")
 endif()
+foreach (generated ${TOOIE_RECOMPILED_FUNCS}/funcs.h ${CMAKE_SOURCE_DIR}/rsp/n_aspMain.cpp)
+    if (NOT EXISTS ${generated})
+        message(FATAL_ERROR "No ${generated}: ${TOOIE_RECOMPILE_HOW}")
+    endif()
+endforeach()
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

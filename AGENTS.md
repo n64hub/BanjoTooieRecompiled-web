@@ -35,17 +35,18 @@ Banjo-Tooie (USA).z64                  user-supplied, never committed
   └─ tools/decompress_rom.py           → build/decompressed.us.z64
       └─ tools/harvest_targets.py      → build/force_keep.txt
           └─ tools/gen_syms_toml.py    → build/banjotooie.us.syms.toml
-              └─ N64Recomp             → RecompiledFuncs/*.c   (committed)
+              └─ N64Recomp             → RecompiledFuncs/*.c   (not committed)
                   └─ CMake/clang-cl    → BanjoTooieRecompiled.exe
 ```
 
-`RecompiledFuncs/` is **committed** (~83 files). It is generated, but only by the
-*patched* N64Recomp, so it was never reproducible from a clean clone. Committing
-it means building the game needs only a compiler — the recompiler is demoted to
-an optional tool. `rsp/n_aspMain.cpp` is committed for the same reason.
+`RecompiledFuncs/` and `rsp/n_aspMain.cpp` are made from the ROM when you
+build (README, Building) and are **not committed** in this fork: they are the
+game's code, translated from the ROM. Upstream commits them, so a merge of
+upstream that touches them is resolved by deleting them again
+(`git rm -r RecompiledFuncs rsp`).
 
-Regenerating is only needed if you change the symbol map, the config's
-stubs/hooks, or the recompiler patches. See §11.
+Driving the recompiler to a clean build again is only needed if you change the
+symbol map, the config's stubs/hooks, or the recompiler patches. See §11.
 
 ---
 

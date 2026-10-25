@@ -23,8 +23,8 @@ from detect_functions import is_core_function_start
 
 # Everything is resolved relative to this file, so the repository works from any
 # checkout location. N64Recomp is the recompiler CLI, which lives in the lib/
-# submodule and is only needed to *regenerate* RecompiledFuncs/ -- the committed
-# output is enough to build the game (see README "Building").
+# submodule. Building runs it once (README "Building"); this drives it to a
+# clean build when the config or the symbol map changes.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 N64RECOMP = os.path.join(ROOT, "lib", "N64Recomp", "build", "N64Recomp.exe")
 TOML = os.path.join(ROOT, "banjotooie.us.toml")

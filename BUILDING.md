@@ -1,8 +1,8 @@
 # Building the web page
 
 This fork's `main` branch builds the game with [Emscripten](https://emscripten.org) into a page,
-`BanjoTooieRecompiled.html`, that draws through WebGPU. The desktop build is upstream's and unchanged: README.md's
-Building section.
+`BanjoTooieRecompiled.html`, that draws through WebGPU. The desktop build is upstream's, except that it makes its
+recompiled code from your ROM, which upstream commits: README.md's Building section.
 
 `lib/rt64`, `lib/N64ModernRuntime`, `lib/RecompFrontend` and `lib/N64Recomp` are upstream's, at the same commits, and
 patched by `patches/` as upstream patches them (`tools/setup_deps.py`).
@@ -12,7 +12,7 @@ code, `tools/build_web.sh` leaves N64Recomp-browser's change out of that file: `
 runtime patch fixes too, and the recompiler's jump tables in another section, whose analysis upstream's N64Recomp
 patch rewrites.
 
-The page needs recompiled code of its own: the committed `RecompiledFuncs/` is C from upstream's N64Recomp, and the
+The page needs recompiled code of its own: the desktop's `RecompiledFuncs/` is C from upstream's N64Recomp, and the
 page's comes from the web-patched one, which writes a tail call as a `return_call` and keeps the FPU's rounding mode
 for float-to-int conversions (WebAssembly's own instructions only round to nearest). So `tools/build_web.sh` makes it
 from your ROM into `build/RecompiledFuncs-web`, as `tools/autostub.py` makes upstream's.

@@ -29,7 +29,8 @@ widescreen, high refresh rates, and an in-game settings menu.
 > **You must own a copy of Banjo-Tooie (USA) to build or run this.** The ROM is
 > supplied by you at runtime through the launcher's **Select ROM** option; it is
 > never downloaded, bundled, or committed here. Nothing in this repository is
-> derived from the ROM's data — it contains code, not game content.
+> derived from the ROM: the recompiled game code is made from your ROM when you
+> build (see [Building](#building)).
 
 ## Table of Contents
 
@@ -40,7 +41,7 @@ widescreen, high refresh rates, and an in-game settings menu.
 * [Running](#running)
 * [Releases](#releases)
 * [Repository Layout](#repository-layout)
-* [What Is Committed, and Why](#what-is-committed-and-why)
+* [What Is Not Committed, and Why](#what-is-not-committed-and-why)
 * [Regenerating the Recompiled Code](#regenerating-the-recompiled-code)
 * [Known Limitations](#known-limitations)
 * [Licensing](#licensing)
@@ -161,6 +162,21 @@ cd BanjoTooieRecomp
 python tools/setup_deps.py
 ```
 
+Then make the recompiled code from your ROM: build the two recompilers, which
+`setup_deps.py` has patched, decompress the ROM and run them. On Windows, run
+these after `msvc_env_use.bat`; the recompilers end in `.exe` there.
+
+```bash
+cmake -S lib/N64Recomp -B lib/N64Recomp/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build lib/N64Recomp/build --target N64RecompCLI RSPRecomp
+
+python tools/decompress_rom.py "path/to/Banjo-Tooie (USA).z64" build/decompressed.us.z64
+pip install rabbitizer                # gen_syms_toml.py reads the ROM with it
+python tools/gen_syms_toml.py         # the symbol tables in build/
+lib/N64Recomp/build/N64Recomp banjotooie.us.toml   # RecompiledFuncs/
+lib/N64Recomp/build/RSPRecomp n_aspMain.us.toml    # rsp/n_aspMain.cpp
+```
+
 Then configure and build. On Windows, the wrappers do this for you:
 
 ```bat
@@ -185,9 +201,11 @@ cmake --build build-cmake --target BanjoTooieRecompiled
 The executable is `build-cmake/BanjoTooieRecompiled.exe` on Windows and
 `build-cmake/BanjoTooieRecompiled` on Linux.
 
-**The ROM is not needed to build.** The recompiled game code is committed (see
-below), so building requires only a compiler and the dependencies. You will be
-asked for the ROM the first time you run the game.
+**The ROM is needed to build, and again to run.** The recompiled game code is
+made from it and not committed (see below). Run the two recompilers again after
+a pull that changes `banjotooie.us.toml`, `n_aspMain.us.toml`, `decomp/`,
+`build/force_keep.txt` or `patches/N64Recomp.patch`. You will be asked for the
+ROM the first time you run the game too.
 
 ### Rebuild notes
 
@@ -324,8 +342,8 @@ BanjoTooieRecomp/
 │   ├── register_overlays.cpp
 │   └── rom_decompression.cpp
 ├── include/tooie_recomp.h  C bridge included by every generated file
-├── rsp/n_aspMain.cpp       recompiled RSP audio microcode
-├── RecompiledFuncs/        the recompiled game code (83 files, committed)
+├── rsp/n_aspMain.cpp       recompiled RSP audio microcode (made from your ROM)
+├── RecompiledFuncs/        the recompiled game code (made from your ROM)
 │
 ├── assets/                 fonts, menu icons, wallpaper, stylesheet
 │   ├── icon.png / .ico / .rc   executable icon (see AGENTS.md)
@@ -354,30 +372,25 @@ Useful `tools/` scripts:
 | `dbgview.py` | capture RmlUi's log (UI asset failures are not on stdout) |
 | `soak.py`, `stall_probe.py` | long-run and stall instruments |
 
-## What Is Committed, and Why
+## What Is Not Committed, and Why
 
-`RecompiledFuncs/` — **83 C files, ~85 MB of generated code — is committed.**
+Upstream commits `RecompiledFuncs/` (83 C files, ~85 MB) and
+`rsp/n_aspMain.cpp`, so that its desktop build needs only a compiler. This fork
+doesn't: they are the game's own code, and Nintendo's audio microcode,
+translated from your ROM, and nothing derived from the ROM goes into this
+repository. Building makes them (see [Building](#building)).
 
-This is unusual, and deliberate. The output is generated, but it is only
-reproducible by the *patched* N64Recomp, which is itself a dependency. Committing
-it means:
+`build/force_keep.txt` is committed because it is *accumulated state* that
+cannot be regenerated: a list of function addresses, no code.
 
-* a user needs only a compiler and the dependencies to build — no recompiler
-  build, no MSVC-only submodule dance;
-* the committed output is exactly what the working executable was built from,
-  so a clone reproduces the tested binary rather than something "equivalent";
-* the recompiler is demoted to an optional tool, needed only to regenerate.
-
-`rsp/n_aspMain.cpp` is committed for the same reason. `build/force_keep.txt` is
-committed because it is *accumulated state* that cannot be regenerated.
-
-Not committed: `build/`, `build-cmake/`, `package/`, and the ROM (which you
-supply).
+Not committed: `RecompiledFuncs/`, `rsp/`, the rest of `build/`,
+`build-cmake/`, `package/`, and the ROM (which you supply).
 
 ## Regenerating the Recompiled Code
 
-Only needed if you change the symbol map, the config's stubs/hooks, or the
-recompiler patches. Requires building the patched N64Recomp:
+Building runs the recompiler once (see [Building](#building)). When you change
+the symbol map, the config's stubs/hooks, or the recompiler patches,
+`tools/autostub.py` drives it to a clean build instead. On Windows:
 
 ```bash
 cd lib/N64Recomp
