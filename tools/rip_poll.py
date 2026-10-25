@@ -15,8 +15,8 @@ Usage (from the project root):
         [--samples=150] [--interval=0.25]
 
 `--delay` must be long enough for the game to reach the stall (the level-load
-gate is at about 55 s). Check with the `[watchdog]` heartbeat in the run log: the
-frame counter stops advancing at the stall.
+gate is at about 55 s). Check with `stall_probe.py`, which reads the game's frame
+counter: it stops advancing at the stall.
 
 Cross-check with CPU before trusting a result: measure the process's CPU time over
 a window against the frame counter. A spin holds ~1.0 core with the frame counter

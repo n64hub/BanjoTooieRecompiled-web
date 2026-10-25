@@ -59,12 +59,12 @@ from capture import capture, find_window  # noqa: E402
 CREATE_NO_WINDOW = 0x08000000
 
 def read_guest_frame(log_path):
-    """The last game frame number the watchdog printed, or None.
+    """The last game frame number the `[rt64]` trace printed, or None.
 
     Read back out of the log so a screenshot can be named with the frame the
     trace recorded for it. The window has to be generous: the projection trace
     emits hundreds of KB per second, so the last 64 KB may not contain a single
-    watchdog line.
+    `[rt64]` frame line.
     """
     try:
         size = os.path.getsize(log_path)
@@ -74,7 +74,7 @@ def read_guest_frame(log_path):
     with open(log_path, "rb") as f:
         f.seek(max(0, size - window))
         tail = f.read().decode("utf-8", errors="ignore")
-    frames = re.findall(r"\[watchdog\][^\n]*?frame=(\d+)", tail)
+    frames = re.findall(r"\[rt64\] frame=(\d+)", tail)
     return int(frames[-1]) if frames else None
 
 def main():
@@ -150,7 +150,7 @@ def main():
             if frame is None:
                 if not reported_no_frame:
                     reported_no_frame = True
-                    print("[trace] no watchdog frame in the log yet", flush=True)
+                    print("[trace] no [rt64] frame in the log yet", flush=True)
                 continue
             os.makedirs(shot_dir, exist_ok=True)
             name = f"cap_frame{frame:06d}_t{int(time.time() - started):03d}.png"

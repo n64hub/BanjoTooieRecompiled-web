@@ -26,7 +26,7 @@ from minidbg import k32, find_rdram, read_mem  # noqa: E402
 CREATE_NO_WINDOW = 0x08000000
 user32 = C.WinDLL("user32", use_last_error=True)
 
-# Guest globals (the ones the `[watchdog]` heartbeat reads).
+# Guest globals.
 FRAME_COUNT = 0x800459C8
 GAME_MODE = 0x80043380
 UPDATE_STATE = 0x80127630

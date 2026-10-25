@@ -64,7 +64,6 @@ RECOMP_FUNC void func_80000450(uint8_t* rdram, recomp_context* ctx) {
     // 0x80000470: sw          $t7, 0x18($sp)
     MEM_W(0X18, ctx->r29) = ctx->r15;
     after_0:
-    tooie_probe_slot(rdram, ctx, 10);
     // 0x80000474: lui         $v0, 0x1E3
     ctx->r2 = S32(0X1E3 << 16);
     // 0x80000478: lui         $t8, 0x1E4
@@ -93,7 +92,6 @@ RECOMP_FUNC void func_80000450(uint8_t* rdram, recomp_context* ctx) {
     // 0x80000498: nop
 
     after_2:
-    tooie_probe_slot(rdram, ctx, 11);
     // 0x8000049C: andi        $t9, $v0, 0x1
     ctx->r25 = ctx->r2 & 0X1;
     // 0x800004A0: beq         $t9, $zero, L_800004BC
@@ -132,7 +130,6 @@ L_800004BC:
     // 0x800004C0: nop
 
     after_4:
-    tooie_probe_slot(rdram, ctx, 12);
     // 0x800004C4: addiu       $a0, $sp, 0x1C
     ctx->r4 = ADD32(ctx->r29, 0X1C);
     // 0x800004C8: jal         0x80000560
@@ -143,7 +140,6 @@ L_800004BC:
     // 0x800004CC: addiu       $a1, $sp, 0x18
     ctx->r5 = ADD32(ctx->r29, 0X18);
     after_5:
-    tooie_probe_slot(rdram, ctx, 1);
     // 0x800004D0: jal         0x800005EC
     // 0x800004D4: nop
 
@@ -152,7 +148,6 @@ L_800004BC:
     // 0x800004D4: nop
 
     after_6:
-    tooie_probe_slot(rdram, ctx, 2);
     // 0x800004D8: lui         $at, 0x8001
     ctx->r1 = S32(0X8001 << 16);
     // 0x800004DC: jal         0x8000060C
@@ -163,12 +158,10 @@ L_800004BC:
     // 0x800004E0: sw          $v0, 0x2000($at)
     MEM_W(0X2000, ctx->r1) = ctx->r2;
     after_7:
-    tooie_probe_slot(rdram, ctx, 3);
     // 0x800004E4: lui         $at, 0x8001
     ctx->r1 = S32(0X8001 << 16);
     // 0x800004E8: sw          $v0, 0x2004($at)
     MEM_W(0X2004, ctx->r1) = ctx->r2;
-    tooie_probe_slot(rdram, ctx, 4);
     // 0x800004EC: addiu       $a0, $sp, 0x1C
     ctx->r4 = ADD32(ctx->r29, 0X1C);
     // 0x800004F0: jal         0x80000560
@@ -408,7 +401,6 @@ RECOMP_FUNC void func_80000670(uint8_t* rdram, recomp_context* ctx) {
 RECOMP_FUNC void func_800006D4(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe(rdram, ctx, 1); tooie_dump(rdram, 0x80200000);
     // 0x800006D4: addiu       $sp, $sp, -0xA90
     ctx->r29 = ADD32(ctx->r29, -0XA90);
     // 0x800006D8: sw          $s0, 0xA48($sp)
@@ -544,7 +536,6 @@ L_80000744:
 RECOMP_FUNC void boot_inflate(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe(rdram, ctx, 2);
     // 0x800007AC: sw          $ra, 0xA6C($sp)
     MEM_W(0XA6C, ctx->r29) = ctx->r31;
     // 0x800007B0: mtc1        $zero, $f17
@@ -564,7 +555,6 @@ L_800007BC:
     // 0x800007C4: addiu       $a0, $sp, 0xA70
     ctx->r4 = ADD32(ctx->r29, 0XA70);
     after_0:
-    tooie_probe_ret(rdram, ctx, 1);
     // 0x800007C8: bne         $v0, $zero, L_80000800
     if (ctx->r2 != 0) {
         // 0x800007CC: lw          $t3, 0xA70($sp)
@@ -609,11 +599,9 @@ L_800007F0:
     ctx->r11 = S32(0X8000 << 16);
     // 0x800007F8: addiu       $t3, $t3, 0x6F48
     ctx->r11 = ADD32(ctx->r11, 0X6F48);
-    tooie_probe_ret(rdram, ctx, 3);
     // 0x800007FC: sw          $s7, 0x0($t3)
     MEM_W(0X0, ctx->r11) = ctx->r23;
 L_80000800:
-    tooie_probe_ret(rdram, ctx, 2);
     // 0x80000800: lw          $ra, 0xA6C($sp)
     ctx->r31 = MEM_W(ctx->r29, 0XA6C);
     // 0x80000804: jr          $ra

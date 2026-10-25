@@ -31190,7 +31190,6 @@ L_808001E8:
 RECOMP_FUNC void chanim_entrypoint_7(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe_ptr(rdram, ctx, 9);
     // 0x808001F8: addiu       $sp, $sp, -0x20
     ctx->r29 = ADD32(ctx->r29, -0X20);
     // 0x808001FC: sw          $ra, 0x14($sp)

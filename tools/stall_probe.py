@@ -30,7 +30,7 @@ from stack_sample import thread_stacks  # noqa: E402
 
 CREATE_NO_WINDOW = 0x08000000
 
-# Tooie globals (the ones the `[watchdog]` heartbeat reads).
+# Tooie globals.
 FRAME_COUNT = 0x800459C8
 GAME_MODE = 0x80043380
 UPDATE_STATE = 0x80127630

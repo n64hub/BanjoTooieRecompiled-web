@@ -96,7 +96,6 @@ void exit_error(const char* str, const char* arg) {
 // --- Graphics / window -----------------------------------------------------
 
 ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
-    std::fprintf(stderr, "[tooie] create_gfx enter\n"); std::fflush(stderr);
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
@@ -118,13 +117,11 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
         exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
     }
 
-    std::fprintf(stderr, "[tooie] create_gfx done\n"); std::fflush(stderr);
     return {};
 }
 
 ultramodern::renderer::WindowHandle create_window(
     ultramodern::gfx_callbacks_t::gfx_data_t) {
-    std::fprintf(stderr, "[tooie] create_window enter\n"); std::fflush(stderr);
     uint32_t flags = SDL_WINDOW_RESIZABLE;
 
 #if defined(__APPLE__)
@@ -139,7 +136,6 @@ ultramodern::renderer::WindowHandle create_window(
     if (window == nullptr) {
         exit_error("Failed to create window: %s\n", SDL_GetError());
     }
-    std::fprintf(stderr, "[tooie] create_window created\n"); std::fflush(stderr);
 
     SDL_SysWMinfo wm_info;
     SDL_VERSION(&wm_info.version);
@@ -158,17 +154,7 @@ ultramodern::renderer::WindowHandle create_window(
 }
 
 void update_gfx(void*) {
-    static int count = 0;
-    if (count < 5) {
-        std::fprintf(stderr, "[tooie] update_gfx call %d enter\n", count);
-        std::fflush(stderr);
-    }
     recompinput::handle_events();
-    if (count < 5) {
-        std::fprintf(stderr, "[tooie] update_gfx call %d done\n", count);
-        std::fflush(stderr);
-        count++;
-    }
 }
 
 // --- Audio -----------------------------------------------------------------
@@ -607,9 +593,6 @@ void initialize_launcher_menu(recompui::LauncherMenu* menu) {
 }
 
 int main(int argc, char** argv) {
-    std::fprintf(stderr, "[tooie] main entered\n");
-    std::fflush(stderr);
-
     std::set_terminate([]() {
         std::fprintf(stderr, "[tooie] std::terminate called\n");
         std::fflush(stderr);
@@ -628,7 +611,6 @@ int main(int argc, char** argv) {
     (void)argv;
 
     SDL_SetMainReady();
-    std::fprintf(stderr, "[tooie] step sdl_setmainready\n"); std::fflush(stderr);
 
 #ifdef _WIN32
     for (int i = 1; i < argc; i++) {
@@ -644,7 +626,6 @@ int main(int argc, char** argv) {
     }
     SetConsoleOutputCP(CP_UTF8);
 #endif
-    std::fprintf(stderr, "[tooie] step console\n"); std::fflush(stderr);
 
     recomp::Version project_version{};
     if (!recomp::Version::from_string(version_string, project_version)) {
@@ -652,12 +633,10 @@ int main(int argc, char** argv) {
                      version_string.c_str());
         return EXIT_FAILURE;
     }
-    std::fprintf(stderr, "[tooie] step version\n"); std::fflush(stderr);
 
 #ifdef _WIN32
     timeBeginPeriod(1);
 #endif
-    std::fprintf(stderr, "[tooie] step timebeginperiod\n"); std::fflush(stderr);
 
 #ifndef __EMSCRIPTEN__
     if (NFD_Init() != NFD_OKAY) {
@@ -665,7 +644,6 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 #endif
-    std::fprintf(stderr, "[tooie] step nfd\n"); std::fflush(stderr);
 
 #ifdef __EMSCRIPTEN__
     // Render to RAM draws every frame a second time at the N64's resolution and copies it back into RDRAM, and in a
@@ -700,8 +678,6 @@ int main(int argc, char** argv) {
     // the TTF, lowercased for matching, which here is "suplexmentary comic nc".
     recompui::register_extra_font("Suplexmentary Comic NC.ttf");
 
-    std::fprintf(stderr, "[tooie] step programconfig\n"); std::fflush(stderr);
-
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0 || !reset_audio(48000)) {
         std::fprintf(stderr, "Unable to initialize SDL audio\n");
         SDL_Quit();
@@ -710,32 +686,25 @@ int main(int argc, char** argv) {
 #endif
         return EXIT_FAILURE;
     }
-    std::fprintf(stderr, "[tooie] step audio\n"); std::fflush(stderr);
 
     const std::filesystem::path config_path =
         recompui::file::get_app_folder_path();
     std::error_code directory_error;
     std::filesystem::create_directories(config_path, directory_error);
     recomp::register_config_path(config_path);
-    std::fprintf(stderr, "[tooie] step config_path\n"); std::fflush(stderr);
 
     for (const auto& game : supported_games) {
         recomp::register_game(game);
     }
-    std::fprintf(stderr, "[tooie] step register_game\n"); std::fflush(stderr);
 
     recompui::register_ui_exports();
     recompui::register_launcher_init_callback(initialize_launcher_menu);
-    std::fprintf(stderr, "[tooie] step ui_exports\n"); std::fflush(stderr);
 
     tooie::register_overlays();
-    std::fprintf(stderr, "[tooie] step overlays\n"); std::fflush(stderr);
 
     recompinput::players::set_single_player_mode(true);
-    std::fprintf(stderr, "[tooie] step single_player\n"); std::fflush(stderr);
 
     initialize_config();
-    std::fprintf(stderr, "[tooie] step init_config\n"); std::fflush(stderr);
 
     recomp::rsp::callbacks_t rsp_callbacks{
         .get_rsp_microcode = get_rsp_microcode,
@@ -745,15 +714,10 @@ int main(int argc, char** argv) {
         .create_render_context = [](uint8_t* rdram,
                                     ultramodern::renderer::WindowHandle handle,
                                     bool developer_mode) {
-            std::fprintf(stderr, "[tooie] create_render_context enter\n");
-            std::fflush(stderr);
-            auto ctx = recompui::renderer::create_render_context(
+            return recompui::renderer::create_render_context(
                 rdram, handle,
                 ultramodern::renderer::PresentationMode::PresentEarly,
                 developer_mode);
-            std::fprintf(stderr, "[tooie] create_render_context done\n");
-            std::fflush(stderr);
-            return ctx;
         },
     };
 
@@ -800,9 +764,7 @@ int main(int argc, char** argv) {
     configuration.error_handling_callbacks = error_handling_callbacks;
     configuration.threads_callbacks = threads_callbacks;
 
-    std::fprintf(stderr, "[tooie] step before start\n"); std::fflush(stderr);
     recomp::start(configuration);
-    std::fprintf(stderr, "[tooie] step after start\n"); std::fflush(stderr);
 
     if (window != nullptr) {
         SDL_DestroyWindow(window);

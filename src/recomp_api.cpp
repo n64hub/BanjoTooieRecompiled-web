@@ -24,14 +24,12 @@
 // 0x80081F5C replaces that tail with a call back into this function.
 
 #include <atomic>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <span>
-#include <thread>
 
 #include "funcs.h"
 #include "recomp.h"
@@ -49,50 +47,19 @@ extern "C" {
 #include "ultramodern/config.hpp"
 #include "ultramodern/ultramodern.hpp"
 
-// --- Host backtraces, for the diagnostics below -----------------------------
+// --- Host image base, for the TOOIE_TRACE_LOOKUP trace below ----------------
 //
-// Several probes print the *host* call stack, because the generated C calls the
-// guest's callees as plain C functions: the host stack names the recompiled
-// functions that led to a call, where the guest `$ra` cannot (see the note in
-// `tooie_probe_slot_table`).
-//
-// The two platforms need different primitives, so the probes go through these
-// two helpers rather than calling either directly. On Windows the frames are
-// made image-relative with the linker's `__ImageBase`, so they symbolize
-// against `build-cmake/BanjoTooieRecompiled.map`; on ELF there is no image base
-// and the values are absolute, for `addr2line`.
+// On Windows a host return address is made image-relative with the linker's
+// `__ImageBase`, so it symbolizes against
+// `build-cmake/BanjoTooieRecompiled.map`; elsewhere there is no image base and
+// the values are absolute, for `addr2line`.
 #if defined(_WIN32)
-// The linker-provided image base, used to turn a host return address into
-// an image RVA that `build-cmake/BanjoTooieRecompiled.map` can symbolize.
 extern "C" const char __ImageBase;
-
-// ntdll, linked by the CRT's default libraries.
-extern "C" __declspec(dllimport) unsigned short __stdcall
-RtlCaptureStackBackTrace(unsigned long frames_to_skip,
-                         unsigned long frames_to_capture,
-                         void** back_trace, unsigned long* back_trace_hash);
-
-inline unsigned short host_backtrace(void** frames, unsigned count) {
-    return RtlCaptureStackBackTrace(0, count, frames, nullptr);
-}
 
 inline uintptr_t host_image_base() {
     return reinterpret_cast<uintptr_t>(&__ImageBase);
 }
-#elif defined(__EMSCRIPTEN__)
-// WebAssembly has no stack to walk from inside: the browser's console shows
-// one with each error instead.
-inline unsigned short host_backtrace(void**, unsigned) { return 0; }
-
-inline uintptr_t host_image_base() { return 0; }
 #else
-#include <execinfo.h>
-
-inline unsigned short host_backtrace(void** frames, unsigned count) {
-    const int captured = ::backtrace(frames, static_cast<int>(count));
-    return captured > 0 ? static_cast<unsigned short>(captured) : 0;
-}
-
 inline uintptr_t host_image_base() { return 0; }
 #endif
 
@@ -153,25 +120,6 @@ constexpr uint32_t kOsViCurrAddress = 0x80041540U;
 
 uint32_t align_up(uint32_t value, uint32_t alignment) {
     return (value + alignment - 1U) & ~(alignment - 1U);
-}
-
-// TEMPORARY diagnostics: the overlay traces below fire on every dispatch. A
-// game that enters a dispatch loop turns them into a flood that buries every
-// other message, so cap each site and say once that it stopped reporting.
-constexpr uint32_t kTracePrintLimit = 2000U;
-
-bool should_trace(uint32_t& counter) {
-    const uint32_t index = counter++;
-    if (index < kTracePrintLimit) {
-        return true;
-    }
-    if (index == kTracePrintLimit) {
-        std::fprintf(stderr,
-                     "  ... this trace site is now suppressed (further "
-                     "occurrences are not printed)\n");
-        std::fflush(stderr);
-    }
-    return false;
 }
 
 // Mirrors the field walk the retail loader uses to find the relocated code
@@ -247,154 +195,7 @@ extern "C" void tooie_boot_pi_raw_start_dma(uint8_t* rdram,
 
     recomp::do_rom_read(rdram, dram_address,
                         recomp::rom_base | device_address, size);
-    std::fprintf(stderr,
-        "[probe-dma] dir=%d dev=0x%08X dram=0x%08X size=0x%X\n",
-        (int)direction, device_address, (uint32_t)dram_address, size);
-    std::fflush(stderr);
     ctx->r2 = 0;
-}
-
-extern "C" void tooie_probe(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
-    (void)rdram;
-    std::fprintf(stderr,
-        "[probe%u] a0=0x%08X a1=0x%08X a2=0x%08X a3=0x%08X s6=0x%08X s7=0x%08X "
-        "sp=0x%08X ra=0x%08X\n",
-        id, (uint32_t)ctx->r4, (uint32_t)ctx->r5, (uint32_t)ctx->r6,
-        (uint32_t)ctx->r7, (uint32_t)ctx->r22, (uint32_t)ctx->r23,
-        (uint32_t)ctx->r29, (uint32_t)ctx->r31);
-    std::fflush(stderr);
-}
-
-extern "C" void tooie_probe_slot(uint8_t* rdram, recomp_context* ctx,
-                                 uint32_t id) {
-    (void)rdram;
-    std::fprintf(stderr,
-        "[slot%u] sp=0x%08X *(sp+0x1C)=0x%08X *(sp+0x18)=0x%08X\n",
-        id, (uint32_t)ctx->r29, (uint32_t)MEM_W(0x1C, ctx->r29),
-        (uint32_t)MEM_W(0x18, ctx->r29));
-    std::fflush(stderr);
-}
-
-extern "C" void tooie_probe_ret(uint8_t* rdram, recomp_context* ctx,
-                                uint32_t id) {
-    (void)rdram;
-    std::fprintf(stderr,
-        "[ret%u] v0=0x%08X flag=0x%08X s7=0x%08X fp=0x%08X gp=0x%08X\n",
-        id, (uint32_t)ctx->r2, (uint32_t)MEM_W(0xA70, ctx->r29),
-        (uint32_t)ctx->r23, (uint32_t)ctx->r30, (uint32_t)ctx->r28);
-    std::fflush(stderr);
-}
-
-// TEMPORARY diagnostic: print a leaf function's a0/ra.
-extern "C" void tooie_probe_ptr(uint8_t* rdram, recomp_context* ctx,
-                                uint32_t id) {
-    (void)rdram;
-    static int count = 0;
-    if (count++ < 80) {
-        std::fprintf(stderr,
-            "[ptr%u] a0=0x%08X a1=0x%08X ra=0x%08X sp=0x%08X\n",
-            id, (uint32_t)ctx->r4, (uint32_t)ctx->r5, (uint32_t)ctx->r31,
-            (uint32_t)ctx->r29);
-        std::fflush(stderr);
-    }
-}
-
-// TEMPORARY diagnostic: print the effective address of `lw reg, offset(a0)`.
-extern "C" void tooie_probe_ea(uint8_t* rdram, recomp_context* ctx,
-                               uint32_t offset) {
-    (void)rdram;
-    static int count = 0;
-    if (count++ < 60) {
-        const uint64_t sum = static_cast<uint64_t>(ctx->r4) + offset;
-        const uint64_t ea = sum - 0xFFFFFFFF80000000ULL;
-        std::fprintf(stderr,
-            "[ea] a0=0x%016llX off=0x%X sum=0x%016llX rdram_off=0x%llX "
-            "guest=0x%08X\n",
-            static_cast<unsigned long long>(ctx->r4), offset,
-            static_cast<unsigned long long>(sum),
-            static_cast<unsigned long long>(ea),
-            static_cast<uint32_t>(ea + 0x80000000ULL));
-        std::fflush(stderr);
-    }
-}
-
-// TEMPORARY diagnostic: the record destructor's slot unlink.
-//
-// `func_800205D0(record)` is the only writer that clears a slot's *value* word:
-// it reads `record + 0x30` (the slot address the creator stored there) and, if
-// the slot still points back at this record, zeroes it. The level-load gate
-// (`func_800C2AB8` -> `func_800C269C`) refuses an entry while its slot's value
-// is non-zero, so if this never runs for the stuck records, the gate spins
-// forever. Logging every call answers that directly.
-extern "C" void tooie_probe_record_free(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    static uint32_t calls = 0;
-    // `ctx->r4` is already sign-extended to a 64-bit gpr, which is what
-    // `MEM_W` needs; truncating it to 32 bits and passing that back in
-    // underflows the address computation and reads host memory before RDRAM.
-    const gpr record = ctx->r4;
-    const gpr slot_ptr = record ? MEM_W(0x30, record) : 0;
-    const gpr slot_value = slot_ptr ? MEM_W(0x0, slot_ptr) : 0;
-    const gpr frame = MEM_W(0, 0xFFFFFFFF800459C8ULL);
-    if (calls < 400U) {
-        std::fprintf(stderr,
-            "[rec-free] #%u frame=%u record=0x%08X slot_ptr=0x%08X "
-            "slot_value=0x%08X\n",
-            calls, static_cast<uint32_t>(frame), static_cast<uint32_t>(record),
-            static_cast<uint32_t>(slot_ptr),
-            static_cast<uint32_t>(slot_value));
-        std::fflush(stderr);
-    }
-    ++calls;
-}
-
-// TEMPORARY diagnostic: the gfx-task callback chain that retires records.
-//
-// `func_8001ED68(task)` is a task callback with no static caller -- it is
-// reached through the task machinery. For a non-audio task it calls
-// `func_8001EE34(task + 0x28)`, the gfx-record manager, whose only path to the
-// record destructor (`func_800200B8` -> `func_800205D0`, the sole writer that
-// clears an effect slot's value word) is inside it. If neither runs, records
-// are created and never retired, so the level-load gate never sees a free slot.
-extern "C" void tooie_probe_task_dispatch(uint8_t* rdram, recomp_context* ctx,
-                                          uint32_t id) {
-    (void)rdram;
-    // One counter per probe id: sharing a single static across both hooks made
-    // the first hook consume the whole print budget and the second look dead.
-    static uint32_t calls[4] = {0, 0, 0, 0};
-    static uint32_t seen[4] = {0, 0, 0, 0};
-    if (id >= 4U) {
-        return;
-    }
-    ++seen[id];
-    const gpr frame = MEM_W(0, 0xFFFFFFFF800459C8ULL);
-    // Print the first few calls and then once per frame change, so the log
-    // shows whether the callback is still being driven *after* the game stops
-    // advancing frames (a frozen frame counter with no further prints means the
-    // task pipeline itself has stopped).
-    static uint32_t last_frame[4] = {0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
-                                     0xFFFFFFFFU};
-    const bool frame_changed =
-        static_cast<uint32_t>(frame) != last_frame[id];
-    if (calls[id] < 12U || frame_changed) {
-        std::fprintf(stderr, "[task%u] #%u frame=%u a0=0x%08X\n", id,
-                     seen[id], static_cast<uint32_t>(frame),
-                     static_cast<uint32_t>(ctx->r4));
-        if (id == 1U && calls[id] < 12U) {
-            const uintptr_t base = host_image_base();
-            void* frames[10]{};
-            const unsigned short n = host_backtrace(frames, 10);
-            std::fprintf(stderr, "[task%u] host frames=%u:", id, n);
-            for (unsigned i = 0; i < n; ++i) {
-                std::fprintf(stderr, " 0x%zX",
-                             reinterpret_cast<uintptr_t>(frames[i]) - base);
-            }
-            std::fprintf(stderr, "\n");
-        }
-        std::fflush(stderr);
-    }
-    last_frame[id] = static_cast<uint32_t>(frame);
-    ++calls[id];
 }
 
 // Gives the cooperative scheduler a preemption point inside a pure-MIPS spin.
@@ -438,222 +239,6 @@ extern "C" void tooie_yield_pending_sound(uint8_t* rdram, recomp_context* ctx) {
     yield_self_1ms(rdram);
 }
 
-// TEMPORARY diagnostic: the level-load gate's accept/refuse decision.
-//
-// Hooked at `0x800C2B28` in `func_800C2AB8`, i.e. immediately before
-// `beql $v0, $zero, L_800C2B44`. At that point `r2` holds
-// `func_800C269C(s2)`'s result and `r18` the entry index being swept, so this
-// prints exactly which entries the gate accepts and which it refuses, and how
-// many times each is retried. That distinguishes "the sweep is retrying one
-// stuck entry forever" from "the sweep is progressing".
-extern "C" void tooie_probe_gate(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    static uint32_t calls = 0;
-    static uint32_t last_index = 0xFFFFFFFFU;
-    static uint32_t last_result = 0xFFFFFFFFU;
-    const uint32_t index = static_cast<uint32_t>(ctx->r18) & 0xFFU;
-    const uint32_t result = static_cast<uint32_t>(ctx->r2);
-    const gpr frame = MEM_W(0, 0xFFFFFFFF800459C8ULL);
-    const bool changed = index != last_index || result != last_result;
-    const bool periodic = calls != 0U && (calls % 200000U) == 0U;
-    if (changed || calls < 40U || periodic) {
-        std::fprintf(stderr,
-            "[gate] #%u frame=%u index=%u result=%u%s\n", calls,
-            static_cast<uint32_t>(frame), index, result,
-            changed ? "" : " (repeat)");
-        std::fflush(stderr);
-    }
-    last_index = index;
-    last_result = result;
-    ++calls;
-}
-
-// TEMPORARY diagnostic: entry probe for suexpression_entrypoint_10. Prints the
-// entry arguments and the host call stack, which names the recompiled functions
-// that led here.
-extern "C" void tooie_probe_kseg1_entry(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    std::fprintf(stderr,
-        "[entry-probe] a0=0x%016llX a1=0x%016llX a2=0x%016llX a3=0x%016llX "
-        "sp=0x%016llX ra=0x%08X\n",
-        (unsigned long long)ctx->r4, (unsigned long long)ctx->r5,
-        (unsigned long long)ctx->r6, (unsigned long long)ctx->r7,
-        (unsigned long long)ctx->r29, (uint32_t)ctx->r31);
-    void* frames[16]{};
-    const unsigned short n = host_backtrace(frames, 16);
-    const uintptr_t base = host_image_base();
-    std::fprintf(stderr, "[entry-probe] host frames=%u:", n);
-    for (unsigned i = 0; i < n; ++i) {
-        std::fprintf(stderr, " 0x%zX",
-                     reinterpret_cast<uintptr_t>(frames[i]) - base);
-    }
-    std::fprintf(stderr, "\n");
-    std::fflush(stderr);
-}
-
-// TEMPORARY diagnostic.
-//
-// func_80100094(object, index) returns
-//
-//     slot_table[*(int16_t*)(object + 0x82 + 2 * index)]
-//
-// where `slot_table` is the 8-byte-entry array at 0x8007BF10 (`func_8001B798`
-// is its getter, `func_8001B754` frees an entry through `heap_free`). It
-// returns 0 when *either* the object's own slot holds 0 *or* the table entry is
-// 0, and `func_808034C4_chintrochar` hands that 0 straight to
-// suexpression_entrypoint_10 as `a0`, which dereferences it. Report both sides
-// of the lookup plus enough of the table to tell "this slot is empty" from
-// "the table was never populated".
-namespace {
-// The MEM_* macros subtract 0xFFFFFFFF80000000, which is only the KSEG0 ->
-// host offset for a 64-bit value whose high half is all ones; a computed
-// 32-bit guest address has to be sign extended first.
-gpr guest_address(uint32_t address) {
-    return static_cast<gpr>(static_cast<int64_t>(static_cast<int32_t>(address)));
-}
-
-constexpr uint32_t kSlotTableBase = 0x8007BF10U;
-constexpr uint32_t kSlotTableStride = 8U;
-constexpr uint32_t kSlotTableSlots = 0xFAU;
-}
-
-// TEMPORARY diagnostic: `func_80100074(actor, index, size)` is the actor
-// resource allocator (`func_800FFECC`): it creates/zeroes `size` bytes for
-// `actor->slots[index]` and returns the pointer, and **frees** the slot when
-// `size == 0`. Nothing else in the game can make `slots[index]` non-zero.
-extern "C" void tooie_probe_create(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    static int count = 0;
-    if (count++ >= 400) {
-        return;
-    }
-    std::fprintf(stderr, "[create] obj=0x%08X index=%u size=0x%X\n",
-                 static_cast<uint32_t>(ctx->r4), static_cast<uint32_t>(ctx->r5),
-                 static_cast<uint32_t>(ctx->r6));
-    std::fflush(stderr);
-}
-
-// TEMPORARY diagnostic: `func_80800000_chintrochar` is the chintrochar code
-// segment's first function. It is the only place that creates the actor's
-// slot-1 (spline/expression) resource, via `suexpression_entrypoint_7(actor, 1,
-// size)` with `size` read out of a per-actor-type table indexed by
-// `*(u16*)(actor + 0x76) >> 7`. Report whether it runs, on which actor, and
-// from where.
-extern "C" void tooie_probe_actor_setup(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    static int count = 0;
-    if (count++ >= 40) {
-        return;
-    }
-    void* frames[20]{};
-    const unsigned short n = host_backtrace(frames, 20);
-    const uintptr_t base = host_image_base();
-    std::fprintf(stderr, "[setup] a0=0x%08X type=0x%04X host frames=%u:",
-                 static_cast<uint32_t>(ctx->r4),
-                 static_cast<uint32_t>(MEM_HU(0x76, ctx->r4)), n);
-    for (unsigned i = 0; i < n; ++i) {
-        std::fprintf(stderr, " 0x%zX",
-                     reinterpret_cast<uintptr_t>(frames[i]) - base);
-    }
-    std::fprintf(stderr, "\n");
-    std::fflush(stderr);
-}
-
-// TEMPORARY diagnostic: the actor update calls `*(def + 0x34)` as a function
-// pointer, where `def` is the actor's definition block (returned by
-// `func_80100368`). Log every dispatch so a `Failed to find function at ...`
-// can be attributed to the actor and def that produced the pointer.
-extern "C" void tooie_probe_dispatch(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    static int count = 0;
-    if (count++ >= 400) {
-        return;
-    }
-    std::fprintf(stderr,
-        "[dispatch] actor=0x%08X def=0x%08X target=0x%08X def[0]=0x%08X "
-        "def[0x34]=0x%08X\n",
-        static_cast<uint32_t>(ctx->r16), static_cast<uint32_t>(ctx->r2),
-        static_cast<uint32_t>(ctx->r3),
-        static_cast<uint32_t>(MEM_W(0, ctx->r2)),
-        static_cast<uint32_t>(MEM_W(0x34, ctx->r2)));
-    std::fflush(stderr);
-}
-
-extern "C" void tooie_probe_slot_table(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    static int count = 0;
-    if (count++ >= 64) {
-        return;
-    }
-    const uint32_t object = static_cast<uint32_t>(ctx->r4);
-    const uint32_t index = static_cast<uint32_t>(ctx->r5);
-    const uint32_t slot_address = object + 0x82U + index * 2U;
-    const int32_t slot = MEM_H(0, guest_address(slot_address));
-    const uint32_t entry_address =
-        kSlotTableBase + static_cast<uint32_t>(slot) * kSlotTableStride;
-    const uint32_t entry = MEM_W(0, guest_address(entry_address));
-
-    std::fprintf(stderr,
-        "[slot] obj=0x%08X idx=%u slot_addr=0x%08X slot=%d entry_addr=0x%08X "
-        "entry=0x%08X\n",
-        object, index, slot_address, static_cast<int>(slot), entry_address,
-        entry);
-    std::fprintf(stderr,
-        "[slot] obj+0x80=0x%08X +0x84=0x%08X +0x88=0x%08X +0x8C=0x%08X\n",
-        static_cast<uint32_t>(MEM_W(0x80, ctx->r4)),
-        static_cast<uint32_t>(MEM_W(0x84, ctx->r4)),
-        static_cast<uint32_t>(MEM_W(0x88, ctx->r4)),
-        static_cast<uint32_t>(MEM_W(0x8C, ctx->r4)));
-
-    // Is the slot table populated at all? A table that is entirely zero says
-    // the allocator never ran, which is a different bug from one empty slot.
-    uint32_t populated = 0;
-    for (uint32_t i = 1; i < kSlotTableSlots; ++i) {
-        const uint32_t address = kSlotTableBase + i * kSlotTableStride;
-        if (MEM_W(0, guest_address(address)) != 0) {
-            ++populated;
-        }
-    }
-    std::fprintf(stderr, "[slot] slot_table populated=%u/%u:", populated,
-                 kSlotTableSlots - 1U);
-    for (int32_t delta = -2; delta <= 2; ++delta) {
-        if (slot + delta < 0) {
-            continue;
-        }
-        const uint32_t address =
-            kSlotTableBase + static_cast<uint32_t>(slot + delta) * kSlotTableStride;
-        std::fprintf(stderr, " %d:0x%08X", static_cast<int>(slot + delta),
-                     static_cast<uint32_t>(MEM_W(0, guest_address(address))));
-    }
-    std::fprintf(stderr, "\n");
-
-    // The generated C calls the callee as a plain C function, so the *host*
-    // call stack identifies the recompiled functions involved exactly. The
-    // guest `$ra` cannot: N64Recomp does not maintain it across calls. Nor can
-    // the guest stack, because it can be left unbalanced by a mis-detected
-    // boundary (see AGENTS.md "core boundaries are heuristic").
-    void* frames[24]{};
-    const unsigned short frame_count = host_backtrace(frames, 24);
-    const uintptr_t base = host_image_base();
-    std::fprintf(stderr, "[slot] host frames=%u:", frame_count);
-    for (unsigned i = 0; i < frame_count; ++i) {
-        std::fprintf(stderr, " 0x%zX",
-                     reinterpret_cast<uintptr_t>(frames[i]) - base);
-    }
-    std::fprintf(stderr, "\n");
-    std::fflush(stderr);
-}
-
-extern "C" void tooie_dump(uint8_t* rdram, uint32_t addr) {
-    const gpr base = static_cast<gpr>(static_cast<int32_t>(addr));
-    std::fprintf(stderr, "[dump 0x%08X]", addr);
-    for (uint32_t i = 0; i < 24; i++) {
-        std::fprintf(stderr, " %02X", MEM_BU(i, base));
-    }
-    std::fprintf(stderr, "\n");
-    std::fflush(stderr);
-}
-
 // TEMPORARY diagnostic: every indirect dispatch, with the host caller's
 // image-relative address so the call site can be symbolized against the linker
 // map (`build-cmake/BanjoTooieRecompiled.map`).
@@ -686,84 +271,14 @@ extern "C" recomp_func_t* tooie_lookup_func(int32_t vram) {
     return get_function(vram);
 }
 
-// TEMPORARY diagnostic: periodic frame-pipeline heartbeat.
-//
-// The game can stall with every guest thread parked in `osRecvMesg` and no
-// crash and no message, which is invisible in the trace because nothing is
-// printing. This reports, once every two seconds, the runtime's VI framebuffer
-// pointers and Tooie's own VI-worker bookkeeping, so a stall can be localised
-// to the frame pipeline instead of guessed at.
-//
-// The guest addresses are Tooie's VI manager globals, which are unnamed in the
-// decomp's symbol file (they sit in core1 BSS); they are the same ones the
-// shipping reference port reads for its watchdog.
-extern "C" PTR(void) osViGetCurrentFramebuffer();
-extern "C" PTR(void) osViGetNextFramebuffer();
-
+// Tooie globals the RT64 hooks below read, unnamed in the decomp's symbol
+// file: the VI manager's frame divisor, the game's frame counter, and the
+// cursor of the scene display list being built (see append_command).
 namespace {
 
-constexpr uint32_t kViEventQueueCount = 0x80078FD0U + 0x08U;
-constexpr uint32_t kFrameBarrierQueueCount = 0x80079010U + 0x08U;
-constexpr uint32_t kViRetraceQueueCount = 0x80079030U + 0x08U;
-constexpr uint32_t kViListenerTable = 0x80078F90U;
-constexpr uint32_t kViListenerCount = 8U;
-constexpr uint32_t kViTargetRetraces = 0x80079138U;
 constexpr uint32_t kViRetraceInterval = 0x8007913CU;
-constexpr uint32_t kViConsumedRetraces = 0x80079704U;
-constexpr uint32_t kGameMode = 0x80043380U;
-constexpr uint32_t kPendingGameMode = 0x80043384U;
 constexpr uint32_t kGameFrameCount = 0x800459C8U;
-constexpr uint32_t kInitialSection = 0x800459CCU;
-constexpr uint32_t kLoadedOverlayCount = 0x80117C60U;
-constexpr uint32_t kGameUpdateState = 0x80127630U;
 constexpr uint32_t kRenderBufferState = 0x80127658U;
-// func_800149BC is a one-shot VI initialiser (it calls osViSetMode and sets
-// this flag so it never runs twice). func_80014A54 gates it on CP0 Cause bit
-// 12, and our config replaces func_80014A54 with a bare `return`.
-constexpr uint32_t kViInitDoneFlag = 0x80078F5CU;
-constexpr uint32_t kOsViCurr = 0x80041540U;
-constexpr uint32_t kWatchdogIntervalMs = 2000U;
-constexpr uint32_t kWatchdogReportCount = 30U;
-
-uint8_t* g_watchdog_rdram = nullptr;
-
-uint32_t watchdog_read(uint32_t address) {
-    return *reinterpret_cast<const uint32_t*>(
-        g_watchdog_rdram + (address - kRdramStart));
-}
-
-void watchdog_thread_func() {
-    for (uint32_t report = 0; report < kWatchdogReportCount; ++report) {
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(kWatchdogIntervalMs));
-
-        std::fprintf(stderr,
-            "[watchdog] %u ms fb=0x%08X/0x%08X frame=%u mode=%u/%u "
-            "section=%u overlays=%u update=0x%08X render=0x%08X "
-            "vi_init=%u vi_curr=0x%08X "
-            "vi_event=%u barrier=%u retrace=%u generated=%u interval=%u "
-            "consumed=%u\n",
-            (report + 1U) * kWatchdogIntervalMs,
-            static_cast<uint32_t>(osViGetCurrentFramebuffer()),
-            static_cast<uint32_t>(osViGetNextFramebuffer()),
-            watchdog_read(kGameFrameCount),
-            watchdog_read(kGameMode),
-            watchdog_read(kPendingGameMode),
-            watchdog_read(kInitialSection),
-            watchdog_read(kLoadedOverlayCount),
-            watchdog_read(kGameUpdateState),
-            watchdog_read(kRenderBufferState),
-            watchdog_read(kViInitDoneFlag),
-            watchdog_read(kOsViCurr),
-            watchdog_read(kViEventQueueCount),
-            watchdog_read(kFrameBarrierQueueCount),
-            watchdog_read(kViRetraceQueueCount),
-            watchdog_read(kViTargetRetraces),
-            watchdog_read(kViRetraceInterval),
-            watchdog_read(kViConsumedRetraces));
-        std::fflush(stderr);
-    }
-}
 
 }
 
@@ -1699,16 +1214,6 @@ extern "C" void tooie_boot_register_core1(uint8_t* rdram,
     MEM_W(0, kCicBootWord2) = static_cast<int32_t>(kCicBootValue2);
 
     load_overlays(kCore1RomStart, kCore1Vram, kCore1Size);
-
-    // TEMPORARY diagnostic: start the frame-pipeline heartbeat (see above).
-    static std::atomic_bool watchdog_started{false};
-    bool expected = false;
-    if (watchdog_started.compare_exchange_strong(expected, true)) {
-        g_watchdog_rdram = rdram;
-        std::fprintf(stderr, "[watchdog] starting heartbeat\n");
-        std::fflush(stderr);
-        std::thread{watchdog_thread_func}.detach();
-    }
 }
 
 // Tooie's generic decompressor (`func_80019EC0`, called from `func_80012214`
@@ -1757,14 +1262,6 @@ extern "C" void tooie_register_loaded_overlay(uint8_t* rdram,
         MEM_HU(kOverlayIndexOffset, overlay_address);
     const uint32_t code_base = get_overlay_code_base(rdram, overlay_address);
 
-    static uint32_t register_trace_count = 0;
-    if (should_trace(register_trace_count)) {
-        std::fprintf(stderr,
-            "[sys-reg] overlay_addr=0x%08X index=%u code_base=0x%08X\n",
-            static_cast<uint32_t>(overlay_address), overlay_index, code_base);
-        std::fflush(stderr);
-    }
-
     if (code_base < kRdramStart || code_base >= kRdramEnd ||
         !tooie::load_overlay(overlay_index, code_base)) {
         std::fprintf(stderr,
@@ -1809,14 +1306,6 @@ extern "C" void tooie_reregister_shifted_overlay(uint8_t* rdram,
             overlay_index, shift);
         std::abort();
     }
-}
-
-extern "C" void tooie_trace_overlay_loader(uint8_t* rdram,
-                                           recomp_context* ctx,
-                                           uint32_t stage) {
-    (void)rdram;
-    (void)ctx;
-    (void)stage;
 }
 
 // N64Recomp's built-in symbol list renames `boot___osDispatchThread` to this.
@@ -2052,17 +1541,6 @@ extern "C" void recomp_syscall_handler(uint8_t* rdram, recomp_context* ctx,
     // `j overlay+0x10` and tail-jumps; the 0x80081F5C hook feeds that rewritten
     // instruction back here.
     if ((instruction & kSyscallInstructionMask) == kSyscallInstruction) {
-        static uint32_t first_trace_count = 0;
-        if (should_trace(first_trace_count)) {
-            std::fprintf(stderr,
-                "[sys-first] thunk=0x%08X code=%u a0=0x%08X a1=0x%08X "
-                "a2=0x%08X a3=0x%08X sp=0x%08X\n",
-                static_cast<uint32_t>(instruction_vram),
-                (instruction >> 6) & 0xFFFFFU, static_cast<uint32_t>(ctx->r4),
-                static_cast<uint32_t>(ctx->r5), static_cast<uint32_t>(ctx->r6),
-                static_cast<uint32_t>(ctx->r7), static_cast<uint32_t>(ctx->r29));
-            std::fflush(stderr);
-        }
         ctx->r8 = static_cast<gpr>(instruction_vram);
         syscall_handler(rdram, ctx);
         return;
@@ -2114,35 +1592,6 @@ extern "C" void recomp_syscall_handler(uint8_t* rdram, recomp_context* ctx,
         overlay_address + kOverlayEntrypointTableOffset;
     const uint32_t target_address =
         MEM_W(syscall_entry_offset, entrypoint_table);
-
-    static uint32_t dispatch_trace_count = 0;
-    if (should_trace(dispatch_trace_count)) {
-        std::fprintf(stderr,
-            "[sys-disp] thunk=0x%08X overlay=0x%08X entry_off=0x%X target=0x%08X "
-            "count=%u a0=0x%08X sp=0x%08X\n",
-            static_cast<uint32_t>(instruction_vram),
-            static_cast<uint32_t>(overlay_address), syscall_entry_offset,
-            target_address, entrypoint_count, static_cast<uint32_t>(ctx->r4),
-            static_cast<uint32_t>(ctx->r29));
-        std::fflush(stderr);
-    }
-
-    // TEMPORARY diagnostic: an entrypoint entered with a KSEG1 (`0xA0000000`-
-    // `0xBFFFFFFF`) argument. N64ModernRuntime's MEM_* macros map KSEG0 only, so
-    // such a pointer faults when the callee dereferences it.
-    {
-        const uint32_t a0 = static_cast<uint32_t>(ctx->r4);
-        if (a0 >= 0xA0000000U && a0 < 0xC0000000U) {
-            std::fprintf(stderr,
-                "[kseg1-arg] thunk=0x%08X target=0x%08X entry_off=0x%X "
-                "a0=0x%08X a1=0x%08X a2=0x%08X a3=0x%08X sp=0x%08X\n",
-                static_cast<uint32_t>(instruction_vram), target_address,
-                syscall_entry_offset, a0, static_cast<uint32_t>(ctx->r5),
-                static_cast<uint32_t>(ctx->r6), static_cast<uint32_t>(ctx->r7),
-                static_cast<uint32_t>(ctx->r29));
-            std::fflush(stderr);
-        }
-    }
 
     ctx->r8 = syscall_entry_offset;
     if (!auto_unload) {

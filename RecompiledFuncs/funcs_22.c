@@ -15085,7 +15085,6 @@ L_8009CC58:
 RECOMP_FUNC void func_8009CC68(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe_ea(rdram, ctx, 0xF0);
     // 0x8009CC68: lw          $v1, 0xF0($a0)
     ctx->r3 = MEM_W(ctx->r4, 0XF0);
     // 0x8009CC6C: lbu         $a1, 0x80($v1)

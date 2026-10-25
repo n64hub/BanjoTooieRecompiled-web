@@ -5859,7 +5859,6 @@ L_800C2AFC:
     // 0x800C2B24: andi        $a0, $s0, 0xFF
     ctx->r4 = ctx->r16 & 0XFF;
     after_1:
-    tooie_probe_gate(rdram, ctx);
     // 0x800C2B28: beql        $v0, $zero, L_800C2B44
     if (ctx->r2 == 0) {
         // 0x800C2B2C: addiu       $s3, $s3, 0x1

@@ -22701,7 +22701,6 @@ L_8001ED58:
 RECOMP_FUNC void func_8001ED68(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe_task_dispatch(rdram, ctx, 1);
     // 0x8001ED68: addiu       $sp, $sp, -0x30
     ctx->r29 = ADD32(ctx->r29, -0X30);
     // 0x8001ED6C: sw          $ra, 0x14($sp)
@@ -22845,7 +22844,6 @@ L_8001EE24:
 RECOMP_FUNC void func_8001EE34(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe_task_dispatch(rdram, ctx, 2);
     // 0x8001EE34: addiu       $sp, $sp, -0xB8
     ctx->r29 = ADD32(ctx->r29, -0XB8);
     // 0x8001EE38: sw          $ra, 0x34($sp)
@@ -26766,7 +26764,6 @@ L_800205C0:
 RECOMP_FUNC void func_800205D0(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe_record_free(rdram, ctx);
     // 0x800205D0: addiu       $sp, $sp, -0x20
     ctx->r29 = ADD32(ctx->r29, -0X20);
     // 0x800205D4: sw          $ra, 0x14($sp)

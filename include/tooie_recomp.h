@@ -41,27 +41,6 @@ void tooie_register_loaded_overlay(uint8_t* rdram, recomp_context* ctx);
 void tooie_unregister_loaded_overlay(uint8_t* rdram, recomp_context* ctx);
 void tooie_reregister_shifted_overlay(uint8_t* rdram, recomp_context* ctx);
 
-// Bounded diagnostic hook points in the overlay loader path. Currently inert.
-void tooie_trace_overlay_loader(uint8_t* rdram, recomp_context* ctx,
-                                uint32_t stage);
-
-// TEMPORARY diagnostics (see AGENTS.md "Instrumentation to remove before
-// shipping").
-void tooie_probe(uint8_t* rdram, recomp_context* ctx, uint32_t id);
-void tooie_probe_slot(uint8_t* rdram, recomp_context* ctx, uint32_t id);
-void tooie_probe_ret(uint8_t* rdram, recomp_context* ctx, uint32_t id);
-void tooie_probe_ptr(uint8_t* rdram, recomp_context* ctx, uint32_t id);
-void tooie_probe_ea(uint8_t* rdram, recomp_context* ctx, uint32_t offset);
-void tooie_probe_slot_table(uint8_t* rdram, recomp_context* ctx);
-void tooie_probe_create(uint8_t* rdram, recomp_context* ctx);
-void tooie_probe_actor_setup(uint8_t* rdram, recomp_context* ctx);
-void tooie_probe_dispatch(uint8_t* rdram, recomp_context* ctx);
-void tooie_probe_kseg1_entry(uint8_t* rdram, recomp_context* ctx);
-void tooie_probe_record_free(uint8_t* rdram, recomp_context* ctx);
-void tooie_probe_task_dispatch(uint8_t* rdram, recomp_context* ctx,
-                               uint32_t id);
-void tooie_probe_gate(uint8_t* rdram, recomp_context* ctx);
-
 // Gives the cooperative scheduler a preemption point inside Tooie's
 // level-transition cleanup sweep, which otherwise spins forever waiting for a
 // sound-object release delivered as an external runtime message.
@@ -91,11 +70,11 @@ void tooie_rt64_sky_scope(uint8_t* rdram, recomp_context* ctx, uint32_t stage);
 void tooie_rt64_sky_layer(uint8_t* rdram, recomp_context* ctx);
 void tooie_rt64_tag_projection(uint8_t* rdram, recomp_context* ctx,
                                uint32_t kind, uint32_t cursor_address);
-void tooie_dump(uint8_t* rdram, uint32_t addr);
 
-// TEMPORARY: report every indirect dispatch with the host caller, so a
-// `Failed to find function at <vram>` can be attributed to the generated
-// function that made the call. Callers are symbolized against the linker map.
+// With TOOIE_TRACE_LOOKUP=1, report every indirect dispatch with the host
+// caller, so a `Failed to find function at <vram>` can be attributed to the
+// generated function that made the call. Callers are symbolized against the
+// linker map.
 recomp_func_t* tooie_lookup_func(int32_t vram);
 
 #ifdef __cplusplus

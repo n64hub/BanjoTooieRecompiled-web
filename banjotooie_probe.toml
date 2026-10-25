@@ -78,67 +78,6 @@ func = "func_80014A54"
 before_vram = 0x80014A54
 text = "return;"
 
-# TEMPORARY diagnostics.
-[[patches.hook]]
-func = "func_800006D4"
-before_vram = 0x800006D4
-text = "tooie_probe(rdram, ctx, 1); tooie_dump(rdram, 0x80200000);"
-
-[[patches.hook]]
-func = "boot_inflate"
-before_vram = 0x800007AC
-text = "tooie_probe(rdram, ctx, 2);"
-
-[[patches.hook]]
-func = "boot_inflate"
-before_vram = 0x800007C8
-text = "tooie_probe_ret(rdram, ctx, 1);"
-
-[[patches.hook]]
-func = "boot_inflate"
-before_vram = 0x800007FC
-text = "tooie_probe_ret(rdram, ctx, 3);"
-
-[[patches.hook]]
-func = "boot_inflate"
-before_vram = 0x80000800
-text = "tooie_probe_ret(rdram, ctx, 2);"
-
-[[patches.hook]]
-func = "func_80000450"
-before_vram = 0x800004D0
-text = "tooie_probe_slot(rdram, ctx, 1);"
-
-[[patches.hook]]
-func = "func_80000450"
-before_vram = 0x800004D8
-text = "tooie_probe_slot(rdram, ctx, 2);"
-
-[[patches.hook]]
-func = "func_80000450"
-before_vram = 0x800004E4
-text = "tooie_probe_slot(rdram, ctx, 3);"
-
-[[patches.hook]]
-func = "func_80000450"
-before_vram = 0x800004EC
-text = "tooie_probe_slot(rdram, ctx, 4);"
-
-[[patches.hook]]
-func = "func_80000450"
-before_vram = 0x80000474
-text = "tooie_probe_slot(rdram, ctx, 10);"
-
-[[patches.hook]]
-func = "func_80000450"
-before_vram = 0x8000049C
-text = "tooie_probe_slot(rdram, ctx, 11);"
-
-[[patches.hook]]
-func = "func_80000450"
-before_vram = 0x800004C4
-text = "tooie_probe_slot(rdram, ctx, 12);"
-
 # func_80082088 polls PI status and reads the per-overlay relocation XOR key
 # straight from the cartridge. Force the status read to idle, then supply the
 # key from the host ROM and NOP the original cartridge load.
@@ -225,46 +164,6 @@ value = 0x03E00008 # jr $ra
 func = "func_80013A7C"
 vram = 0x80013A98 # jr $a3
 value = 0x03E00008 # jr $ra
-
-# TEMPORARY diagnostic: suexpression_entrypoint_10 faults on `lh $v0, 0x0($a0)`.
-[[patches.hook]]
-func = "suexpression_entrypoint_10"
-before_vram = 0x80800428
-text = "tooie_probe_kseg1_entry(rdram, ctx);"
-
-# TEMPORARY diagnostic: chanim_entrypoint_7 is entered with a0 = NULL although
-# the syscall site that dispatches it had a0 = 0x801DD74C.
-[[patches.hook]]
-func = "chanim_entrypoint_7"
-before_vram = 0x808001F8
-text = "tooie_probe_ptr(rdram, ctx, 9);"
-
-# TEMPORARY diagnostic: func_80100094 indexes a table from (a0, a1) and faults
-# when a0 is NULL; report the caller.
-[[patches.hook]]
-func = "func_80100094"
-before_vram = 0x80100094
-text = "tooie_probe_slot_table(rdram, ctx);"
-
-# TEMPORARY diagnostic: the actor resource allocator. Every non-zero slot id
-# comes from here, and a size of 0 frees the slot instead of creating it.
-[[patches.hook]]
-func = "func_80100074"
-before_vram = 0x80100074
-text = "tooie_probe_create(rdram, ctx);"
-
-# TEMPORARY diagnostic: chintrochar's first function is the only place that
-# creates the actor's slot-1 (spline/expression) resource.
-[[patches.hook]]
-func = "func_80800000_chintrochar"
-before_vram = 0x80800000
-text = "tooie_probe_actor_setup(rdram, ctx);"
-
-# TEMPORARY diagnostic: trace the a0 passed into the overlay-load predicate.
-[[patches.hook]]
-func = "func_8009CC68"
-before_vram = 0x8009CC68
-text = "tooie_probe_ea(rdram, ctx, 0xF0);"
 
 # The loader has copied and relocated the overlay into RDRAM by this point.
 # Register the matching N64Recomp section before func_80081F64 patches the

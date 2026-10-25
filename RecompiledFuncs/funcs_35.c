@@ -19946,7 +19946,6 @@ L_80100068:
 RECOMP_FUNC void func_80100074(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe_create(rdram, ctx);
     // 0x80100074: addiu       $sp, $sp, -0x18
     ctx->r29 = ADD32(ctx->r29, -0X18);
     // 0x80100078: sw          $ra, 0x14($sp)
@@ -19969,7 +19968,6 @@ RECOMP_FUNC void func_80100074(uint8_t* rdram, recomp_context* ctx) {
 RECOMP_FUNC void func_80100094(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
-    tooie_probe_slot_table(rdram, ctx);
     // 0x80100094: addiu       $sp, $sp, -0x18
     ctx->r29 = ADD32(ctx->r29, -0X18);
     // 0x80100098: sll         $t6, $a1, 1
@@ -20105,7 +20103,6 @@ RECOMP_FUNC void func_80100120(uint8_t* rdram, recomp_context* ctx) {
     after_0:
     // 0x80100148: lw          $v1, 0x34($v0)
     ctx->r3 = MEM_W(ctx->r2, 0X34);
-    tooie_probe_dispatch(rdram, ctx);
     // 0x8010014C: beql        $v1, $zero, L_801001BC
     if (ctx->r3 == 0) {
         // 0x80100150: lbu         $t1, 0x75($s0)

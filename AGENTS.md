@@ -149,8 +149,7 @@ Verified: for every non-`*` line of `build/sections.txt`, the remapped entry
 names the same overlay — **851/851 match**.
 
 **The lesson, which generalizes:** when an overlay's first frames misbehave,
-verify the *mapping* before auditing game logic. The `[sys-reg] index=` trace line
-is the cheap check.
+verify the *mapping* before auditing game logic.
 
 ---
 
@@ -864,8 +863,8 @@ is never published missing one of its assets.
   exits with `Invalid version string` on anything else, so the workflow rejects
   a non-conforming tag *before* building rather than shipping an executable that
   cannot start. `1.0.0-build.7` is fine — the suffix is explicitly allowed.
-  Verified end to end: a build stamped `1.0.0-build.99` boots past
-  `[tooie] step version` with no error.
+  Verified end to end: a build stamped `1.0.0-build.99` boots past the version
+  check with no error.
 * ⚠ **It is an environment variable rather than a `-D` cache entry on purpose.**
   A cache entry persists in `build-cmake/`, so it would keep stamping a stale
   version into local builds long after the workflow that set it had gone.
@@ -910,15 +909,11 @@ visible from Windows, which is the point of building both:
    and CMake emits it unquoted, which the shell reads as an environment
    assignment.
 2. **`undefined reference to RtlCaptureStackBackTrace` / `__ImageBase`.**
-   `recomp_api.cpp` called both unconditionally. Six diagnostics print the
-   *host* call stack (the generated C calls the guest's callees as plain C
-   functions, so the host stack names the recompiled callers where the guest
-   `$ra` cannot), and all six went through those symbols directly. They now go
-   through `host_backtrace()` / `host_image_base()` — the Windows pair on
-   Windows, `backtrace(3)` with no image base elsewhere. On Windows the
-   substitution is a pure rename, so the output is unchanged; on ELF the frames
-   are absolute for `addr2line` rather than map-relative RVAs. The rest of the
-   port's own sources were audited for the same problem and have none.
+   `recomp_api.cpp` called both unconditionally. The one left, `__ImageBase`
+   for the `TOOIE_TRACE_LOOKUP` trace, goes through `host_image_base()`: the
+   image base on Windows, none elsewhere, so on ELF the addresses are absolute
+   for `addr2line` rather than map-relative RVAs. The rest of the port's own
+   sources were audited for the same problem and have none.
 
 **Verified by CI, not locally.** Run 6 (commit `ed44f6b`) went green end to end
 and published `v1.0.0-build.6` with both assets. The Linux job's checks all
@@ -1013,9 +1008,9 @@ Open work, roughly in priority order:
    one normal session, see which actually execute.
 4. **Review the `boot_*` stubs** against what the runtime provides. Do not
    un-stub without testing — they are load-bearing for boot.
-5. **Strip the development instrumentation** before a release: probe hooks in
-   `banjotooie.us.toml`, the `LOOKUP_FUNC` override in `include/tooie_recomp.h`,
-   `[probe]` prints inside the runtime patch, and the rt64 diagnostics commit.
+5. **Strip the development instrumentation** before a release: the
+   `LOOKUP_FUNC` override in `include/tooie_recomp.h` and the rt64 diagnostics
+   commit.
    ⚠ Removing the `LOOKUP_FUNC` override changes dispatch for *every* generated
    file, so do it **after** the audits above and soak afterwards, or a failure
    gets misattributed.
