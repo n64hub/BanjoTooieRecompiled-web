@@ -67,7 +67,8 @@ if [ "$(cat "$PATCHED" 2> /dev/null)" != "$(patched_state 2> /dev/null)" ]; then
     web_patch N64Recomp lib/N64ModernRuntime/N64Recomp
     web_patch RecompFrontend lib/RecompFrontend
     web_patch N64Recomp lib/N64Recomp src/analysis.cpp
-    patched_state > "$PATCHED"
+    # Not with --patches, whose lib/N64Recomp-browser can be a symbolic link, which git submodule status refuses.
+    $PATCHES_ONLY || patched_state > "$PATCHED"
 fi
 if $PATCHES_ONLY; then
     printf '\nDone: the submodules are patched.\n'
