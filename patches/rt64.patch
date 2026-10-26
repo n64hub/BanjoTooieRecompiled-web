@@ -273,10 +273,10 @@ index 9fae0d4..ff85358 100644
                  const GameCall &call = proj.gameCalls[d];
                  renderIndices.instanceIndex = call.callDesc.callIndex;
 diff --git a/src/render/rt64_projection_processor.cpp b/src/render/rt64_projection_processor.cpp
-index e842dcc..41110e5 100644
+index e842dcc..ea15721 100644
 --- a/src/render/rt64_projection_processor.cpp
 +++ b/src/render/rt64_projection_processor.cpp
-@@ -7,13 +7,96 @@
+@@ -7,6 +7,24 @@
  #include "common/rt64_math.h"
  #include "hle/rt64_workload_queue.h"
  
@@ -299,6 +299,13 @@ index e842dcc..41110e5 100644
 +}
 +
  namespace RT64 {
+     inline void adjustProjectionMatrix(interop::float4x4 &matrix, const float aspectRatioScale) {
+         matrix[0][0] *= aspectRatioScale;
+@@ -14,6 +32,71 @@ namespace RT64 {
+         matrix[2][0] *= aspectRatioScale;
+         matrix[3][0] *= aspectRatioScale;
+     }
++
 +    // TEMPORARY diagnostic (Banjo-Tooie port). TOOIE_TRACE_PROJ=1 dumps, per
 +    // projection per frame, the matrices RT64 renders with and how it derived
 +    // them. RT64 replaces the game's merged matrix with mul(viewEstimate,
@@ -330,13 +337,6 @@ index e842dcc..41110e5 100644
 +
 +    uint32_t traceProjFrame = 0;
 +    static uint32_t traceMatrixDumps = 0;
-+
-     inline void adjustProjectionMatrix(interop::float4x4 &matrix, const float aspectRatioScale) {
-         matrix[0][0] *= aspectRatioScale;
-         matrix[1][0] *= aspectRatioScale;
-         matrix[2][0] *= aspectRatioScale;
-         matrix[3][0] *= aspectRatioScale;
-     }
 +
 +    // Tooie uses the standard infinite-far-plane form for some of its
 +    // projections (in first person, in sustained stretches): m[2][2] == m[2][3]
@@ -436,14 +436,14 @@ index e842dcc..41110e5 100644
              if ((prevProjMatrix != nullptr) && (prevViewMatrix != nullptr) && (rigidBody != nullptr)) {
                  const interop::float4x4 curViewTransform = viewMatrix;
                  const interop::float4x4 curProjTransform = projMatrix;
-@@ -126,6 +235,7 @@ namespace RT64 {
- 
-                 // We only interpolate the projection if the view matrix has been interpolated.
-                 const bool interpolateProjection = rigidBody->lerpTranslation || rigidBody->lerpRotation;
-+                traceInterpolateProjection = interpolateProjection;
+@@ -129,6 +238,7 @@ namespace RT64 {
                  if (interpolateProjection) {
                      projMatrix = lerpMatrix(adjustedPrevProj, curProjTransform, p.curFrameWeight);
                      prevProjTransform = lerpMatrix(adjustedPrevProj, curProjTransform, p.prevFrameWeight);
++                    traceInterpolateProjection = true; // TEMPORARY diagnostic
+                 }
+                 else {
+                     projMatrix = curProjTransform;
 @@ -144,6 +254,69 @@ namespace RT64 {
  
              interop::float4x4 &prevViewProjTransform = drawData.prevViewProjTransforms[proj.transformsIndex];

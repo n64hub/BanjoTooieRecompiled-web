@@ -2,9 +2,12 @@
 # Builds the web page, build-web/BanjoTooieRecompiled.html, from a clone and your ROM (BUILDING.md says what it needs
 # and how to serve it):
 #   tools/build_web.sh [path/to/Banjo-Tooie (USA).z64]
+#   tools/build_web.sh --patches          the submodules and their patches alone: no ROM, only git, CMake and Python
 # The ROM is needed once: its decompressed copy stays in build/. Safe to run again after a pull: every step skips what
 # is done or redoes only what changed. Extra arguments for the page's CMake configure go in $WEB_CMAKE_ARGS (it runs
-# once per build dir: delete build-web/build.ninja to configure again).
+# once per build dir: delete build-web/build.ninja to configure again). --patches is for N64Recomp-browser's CI: it puts
+# its own checkout at lib/N64Recomp-browser, which --patches leaves as it is, so a change there that stops patches/
+# going in under its web patches is red there and not at this page's next build.
 #
 # The page needs its own recompiled code: N64Recomp patched by patches/N64Recomp.patch and by N64Recomp-browser, whose
 # C writes the tail calls as return_calls and keeps the FPU's rounding mode for float-to-int conversions, which
@@ -14,6 +17,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
+PATCHES_ONLY=false
+if [ "${1:-}" = --patches ]; then
+    PATCHES_ONLY=true
+    shift
+    # Every submodule update below, setup_deps.py's too, leaves lib/N64Recomp-browser alone.
+    export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=submodule.lib/N64Recomp-browser.update GIT_CONFIG_VALUE_0=none
+fi
 ROM=${1:-}
 step() { printf '\n==> %s\n' "$*"; }
 fail() { printf '\nError: %s\n' "$*" >&2; exit 1; }
@@ -58,6 +68,10 @@ if [ "$(cat "$PATCHED" 2> /dev/null)" != "$(patched_state 2> /dev/null)" ]; then
     web_patch RecompFrontend lib/RecompFrontend
     web_patch N64Recomp lib/N64Recomp src/analysis.cpp
     patched_state > "$PATCHED"
+fi
+if $PATCHES_ONLY; then
+    printf '\nDone: the submodules are patched.\n'
+    exit 0
 fi
 
 # ---------------------------------------------------------------- the recompiled code
