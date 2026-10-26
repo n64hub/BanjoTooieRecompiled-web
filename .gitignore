@@ -27,6 +27,13 @@ rsp/
 # Python bytecode from the tools.
 __pycache__/
 *.pyc
+.devenv
+
+# Flatpak build artifacts
+.flatpak-builder/
+builddir/
+repo/
+*.flatpak
 
 # The web page's build (BUILDING.md, "The web page"), inside the checkout for ccache
 build-web*/

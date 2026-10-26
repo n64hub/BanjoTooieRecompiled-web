@@ -146,12 +146,13 @@ outright with `D8021: invalid numeric argument '/Wno-unused-parameter'`.
 * **clang** — Ubuntu 24.04's 18 is fine. The LLVM 19 floor above is a Windows
   one: it is MSVC's standard library that refuses older clang, not the code.
 * **libsdl2-dev**, **libfreetype-dev** (RmlUi's font engine) and
-  **libgtk-3-dev** (nativefiledialog-extended's Linux backend). `libsdl2-dev`
-  pulls in the X11/Wayland/ALSA headers that `SDL_syswm.h` includes.
+  **libdbus-1-dev** (nativefiledialog-extended's xdg-desktop-portal backend).
+  `libsdl2-dev` pulls in the X11/Wayland/ALSA headers that `SDL_syswm.h`
+  includes.
 
 ```bash
 sudo apt-get install -y clang ninja-build pkg-config \
-    libsdl2-dev libfreetype-dev libgtk-3-dev
+    libsdl2-dev libfreetype-dev libdbus-1-dev
 ```
 
 ### Steps
@@ -271,15 +272,12 @@ no OpenGL backend on Linux.
 |---|---|---|
 |`libSDL2-2.0.so.0`|`libsdl2-2.0-0`|window, input, audio|
 |`libfreetype.so.6`|`libfreetype6`|font rasterisation|
-|`libgtk-3.so.0` and its dependencies (`libgdk-3`, `libpango`, `libcairo`, `libglib`, …)|`libgtk-3-0`|the **Select ROM** file dialog|
+|`libdbus-1.so.3`|`libdbus-1-3`|the **Select ROM** file dialog|
 
-The GTK3 requirement is worth calling out, because it is not obvious: the
-`Select ROM` dialog is nativefiledialog-extended's GTK backend, statically
-linked into the executable, so its libraries become direct dependencies of the
-binary rather than something loaded on demand. GTK3 is present on GNOME and most
-desktop installs; on a minimal or non-GTK system install `libgtk-3-0`, or build
-with `-DNFD_PORTAL=ON` to use the xdg-desktop-portal backend (which needs
-`libdbus-1-3` instead).
+The **Select ROM** dialog goes through xdg-desktop-portal, so a portal service
+must be running (`xdg-desktop-portal` plus a desktop backend such as
+`xdg-desktop-portal-gnome`, `-kde` or `-gtk`). Every mainstream desktop ships
+one; on a bare window manager, install one or the dialog will not open.
 
 Everything else in the list is either the C/C++ runtime or a dependency of those
 three. Check what is missing on your system with:
@@ -288,16 +286,29 @@ three. Check what is missing on your system with:
 ldd BanjoTooieRecompiled | grep 'not found'
 ```
 
+### Flatpak
+
+A standalone Flatpak bundle (`BanjoTooieRecompiled.flatpak`) is available in [Releases](#releases) for Linux and Steam Deck.
+
+To install and run:
+```bash
+flatpak install BanjoTooieRecompiled.flatpak
+flatpak run io.github.Vidanox.BanjoTooieRecompiled
+```
+
+Flatpak bundles its runtime dependencies and uses the desktop portal for the **Select ROM** file dialog. Save data and configurations are stored in `~/.var/app/io.github.Vidanox.BanjoTooieRecompiled/config/BanjoTooieRecompiled/`. See [`flatpak/README.md`](flatpak/README.md) for build instructions.
+
 ## Releases
 
 Releases are built and published by
 [`.github/workflows/build.yml`](.github/workflows/build.yml); there is no manual
-release step. Every release carries both packages, built from the same commit:
+release step. Every release carries packages built from the same commit:
 
 |Archive|Platform|
 |---|---|
 |`BanjoTooieRecompiled-windows-x64.zip`|the executable, the SDL2/DXC DLLs it loads, and `assets/`|
 |`BanjoTooieRecompiled-linux-x64.tar.gz`|the executable, `assets/`, and `run.sh`|
+|`BanjoTooieRecompiled.flatpak`|standalone Flatpak bundle for Linux and Steam Deck|
 
 Both are built from the same commit by the same workflow run, and published
 together. The Windows archive carries the DLLs it loads; the Linux one carries
@@ -305,18 +316,18 @@ none, so see [Runtime dependencies](#runtime-dependencies) for what to install.
 
 |You push|You get|
 |---|---|
-|a commit to `main`|a release tagged `v<base>-build.<run number>`, created at that commit|
+|a commit to `main`|a release for the next patch version, `v1.0.1`, `v1.0.2`, …|
 |a `v*` tag|a release for that tag, versioned exactly as the tag says|
 
-`<base>` is the highest plain `vX.Y.Z` tag in the repository, so tagging `v1.1.0`
-moves the base and later builds become `v1.1.0-build.<n>`. Releases from `main`
-are ordinary releases, not pre-releases, so **`releases/latest` is always the
-newest build**. Pull requests build and upload a workflow artifact but publish
-nothing.
+The highest plain `vX.Y.Z` tag sets the base; a commit to `main` increments its
+patch. Tagging `v1.1.0` therefore makes the next branch build `v1.1.1`. Releases
+from `main` are ordinary releases, not pre-releases, so **`releases/latest` is
+always the newest build**. Pull requests build and upload a workflow artifact
+but publish nothing.
 
 The version a release is built as is stamped into the executable, and the
-launcher shows it in the bottom-left corner (`v1.0.0-build.12`). A local build,
-which has no stamp, reports `1.0.0`. The workflow passes it in as the
+launcher shows it in the bottom-left corner (`v1.0.1`). A local build, which has
+no stamp, reports `1.0.0`. The workflow passes it in as the
 `BT_VERSION` environment variable, which `CMakeLists.txt` turns into a define;
 a tag that is not `vMAJOR.MINOR.PATCH` is rejected before anything is built,
 because the game refuses to start on a version string it cannot parse.
@@ -349,6 +360,7 @@ BanjoTooieRecomp/
 │   ├── icon.png / .ico / .rc   executable icon (see AGENTS.md)
 │   └── menu.png            launcher wallpaper
 ├── decomp/                 symbol/relocation tables from the WIP decompilation
+├── flatpak/                Flatpak packaging: manifest, desktop entry, metainfo
 ├── patches/                the three dependency patches
 ├── lib/                    dependencies as git submodules
 └── tools/                  build and diagnostics scripts (see below)

@@ -69,6 +69,14 @@ endforeach()
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+    option(RECOMP_FLATPAK "Configure the build for Flatpak compatibility." OFF)
+    if (RECOMP_FLATPAK)
+        add_compile_definitions(RECOMP_FLATPAK)
+        set(NFD_PORTAL ON CACHE BOOL "Use xdg-desktop-portal instead of GTK" FORCE)
+    endif()
+endif()
+
 set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
 add_compile_definitions(
@@ -87,6 +95,16 @@ set(RT64_DIR ${CMAKE_SOURCE_DIR}/lib/rt64)
 # sources, so it must be reached through the same `lib/RecompFrontend` layout
 # the upstream projects use.
 set(RECOMPFRONTEND_DIR ${CMAKE_SOURCE_DIR}/lib/RecompFrontend)
+
+# Linux file dialog: xdg-desktop-portal, not GTK. recompui opens the dialog
+# from the UI thread, but NFD_Init (gtk_init) runs on the main thread, and GTK
+# is single-threaded -- "Select ROM" segfaulted inside
+# gtk_file_chooser_dialog_new on a non-main thread. The portal backend talks
+# D-Bus, has no thread affinity, and drops the GTK runtime dependency. It must
+# be set before rt64, which owns the nfd subdirectory.
+if (UNIX AND NOT APPLE)
+    set(NFD_PORTAL ON CACHE BOOL "Use xdg-desktop-portal instead of GTK")
+endif()
 
 add_subdirectory(${RT64_DIR} ${CMAKE_BINARY_DIR}/rt64)
 
@@ -357,7 +375,9 @@ target_sources(BanjoTooieRecompiled PRIVATE ${SOURCES})
 # The emptiness test matters: an empty define would make the version string "",
 # which recomp::Version::from_string rejects, and main() would exit before the
 # window opened. An exported-but-empty BT_VERSION must mean "no stamp".
-if (DEFINED ENV{BT_VERSION} AND NOT "$ENV{BT_VERSION}" STREQUAL "")
+if (DEFINED BT_VERSION AND NOT "${BT_VERSION}" STREQUAL "")
+    target_compile_definitions(BanjoTooieRecompiled PRIVATE "BT_VERSION=\"${BT_VERSION}\"")
+elseif (DEFINED ENV{BT_VERSION} AND NOT "$ENV{BT_VERSION}" STREQUAL "")
     target_compile_definitions(BanjoTooieRecompiled PRIVATE "BT_VERSION=\"$ENV{BT_VERSION}\"")
 endif()
 

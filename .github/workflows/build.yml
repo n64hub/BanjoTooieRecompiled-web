@@ -7,11 +7,10 @@ name: Build
 #
 # Two ways a release is produced:
 #
-#   * push to `main`  -> a build-stamped release, `v<base>-build.<run number>`,
-#                        tagged automatically at the pushed commit. `<base>` is
-#                        the highest plain `vX.Y.Z` tag, so a human tagging
-#                        `v1.1.0` moves the base and builds become
-#                        `v1.1.0-build.<n>` from then on.
+#   * push to `main`  -> a release for the next patch version, `v1.0.1`,
+#                        tagged automatically at the pushed commit. The highest
+#                        plain `vX.Y.Z` tag is incremented, so a human tagging
+#                        `v1.1.0` makes the next branch build `v1.1.1`.
 #   * push of a `v*` tag -> a release for that tag, versioned exactly as the tag
 #                        says.
 #
@@ -81,9 +80,10 @@ jobs:
                       "version with recomp::Version::from_string and refuses "
                       "to start on anything else" % tag)
           else:
-              # A build off a branch. Base the version on the highest plain
-              # vX.Y.Z tag and append the run number, which is unique and
-              # monotonic across the repository.
+              # A build off a branch. Increment the patch of the highest plain
+              # vX.Y.Z tag so every release is distinct and ordered
+              # (v1.0.1, v1.0.2, ...). A human tag push moves the base: after
+              # v1.1.0 the next branch build is v1.1.1.
               #
               # `ls-remote` rather than `git tag`, because the checkout is
               # shallow and has no tags in it. Sorting on the parsed tuple
@@ -94,8 +94,14 @@ jobs:
                       for line in out.splitlines() if "\t" in line]
               plain = sorted((t for t in tags if re.fullmatch(r"v\d+\.\d+\.\d+", t)),
                              key=lambda t: tuple(int(p) for p in t[1:].split(".")))
-              base = plain[-1][1:] if plain else "1.0.0"
-              version = "%s-build.%s" % (base, os.environ["GITHUB_RUN_NUMBER"])
+              if plain:
+                  major, minor, patch = (int(p) for p in plain[-1][1:].split("."))
+                  patch += 1
+                  while "v%d.%d.%d" % (major, minor, patch) in tags:
+                      patch += 1
+                  version = "%d.%d.%d" % (major, minor, patch)
+              else:
+                  version = "1.0.0"
               tag = "v" + version
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
@@ -252,15 +258,16 @@ jobs:
         #   libsdl2-dev      SDL2, and transitively the X11/Wayland/ALSA
         #                    headers SDL_syswm.h and SDL_video.h include.
         #   libfreetype-dev  RmlUi's font engine (Freetype::Freetype).
-        #   libgtk-3-dev     nativefiledialog-extended's Linux backend, which
-        #                    is GTK3 unless NFD_PORTAL is set.
-        #   pkg-config       nfd finds GTK through pkg_check_modules.
+        #   libdbus-1-dev    nativefiledialog-extended's xdg-desktop-portal
+        #                    backend; CMakeLists.txt sets NFD_PORTAL on Linux
+        #                    because the GTK backend crashes off-main-thread.
+        #   pkg-config       nfd finds D-Bus through pkg_check_modules.
         # cmake and ninja come with the runner image.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             clang ninja-build pkg-config \
-            libsdl2-dev libfreetype-dev libgtk-3-dev
+            libsdl2-dev libfreetype-dev libdbus-1-dev
 
       - name: Apply the dependency patches
         run: python tools/setup_deps.py
@@ -343,10 +350,76 @@ jobs:
           path: package/BanjoTooieRecompiled-linux-x64.tar.gz
           if-no-files-found: error
 
+  build-flatpak:
+    needs: [version, build-windows, build-linux]
+    runs-on: ubuntu-24.04
+    env:
+      FLATPAK_ID: io.github.Vidanox.BanjoTooieRecompiled
+      FREEDESKTOP_VERSION: "24.08"
+      LLVM_VERSION: "18"
+
+    steps:
+      - name: Check out, with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install flatpak tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder elfutils appstream
+
+      - name: Apply the dependency patches
+        run: python tools/setup_deps.py
+
+      - name: Verify dependencies are in the required state
+        run: python tools/setup_deps.py --check
+
+      - name: Set up Flathub runtimes
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub \
+            org.freedesktop.Platform//${{ env.FREEDESKTOP_VERSION }} \
+            org.freedesktop.Sdk//${{ env.FREEDESKTOP_VERSION }} \
+            org.freedesktop.Sdk.Extension.llvm${{ env.LLVM_VERSION }}//${{ env.FREEDESKTOP_VERSION }}
+
+      - name: Build Flatpak
+        env:
+          BT_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -eu
+          if [ -n "${BT_VERSION:-}" ]; then
+            sed -i "s|-DRECOMP_FLATPAK=ON|-DRECOMP_FLATPAK=ON -DBT_VERSION=${BT_VERSION}|" "flatpak/${FLATPAK_ID}.json"
+          fi
+          flatpak-builder --user --force-clean --repo=repo builddir "flatpak/${FLATPAK_ID}.json"
+
+          exe="builddir/files/bin/BanjoTooieRecompiled"
+          if [ ! -x "$exe" ]; then echo "Flatpak build produced no executable"; exit 1; fi
+          file "$exe"
+
+          want="${{ needs.version.outputs.version }}"
+          if ! grep -qa -- "$want" "$exe"; then
+            echo "the executable does not carry the version string '$want'"; exit 1
+          fi
+          echo "version stamp present: $want"
+
+          mkdir -p package
+          flatpak build-bundle repo "package/BanjoTooieRecompiled.flatpak" "${FLATPAK_ID}" \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+          ls -l package
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: BanjoTooieRecompiled-flatpak
+          path: package/BanjoTooieRecompiled.flatpak
+          if-no-files-found: error
+
   # One publisher, so the two builds cannot race to create the release and a
   # release is never published missing one of its assets.
   release:
-    needs: [version, build-windows, build-linux]
+    needs: [version, build-windows, build-linux, build-flatpak]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
@@ -371,6 +444,7 @@ jobs:
           files: |
             package/BanjoTooieRecompiled-windows-x64.zip
             package/BanjoTooieRecompiled-linux-x64.tar.gz
+            package/BanjoTooieRecompiled.flatpak
           body: |
             Built from
             [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }}).
@@ -388,13 +462,18 @@ jobs:
             |---|---|---|
             | Windows x64 | `BanjoTooieRecompiled-windows-x64.zip` | extract, run `BanjoTooieRecompiled.exe` |
             | Linux x64 | `BanjoTooieRecompiled-linux-x64.tar.gz` | extract, run `./run.sh` from inside the extracted directory |
+            | Linux (Flatpak) | `BanjoTooieRecompiled.flatpak` | `flatpak install BanjoTooieRecompiled.flatpak` |
 
             On Linux, run it through `run.sh` rather than the executable
             directly: the launcher looks for its `assets/` directory relative to
             the working directory. It needs a working Vulkan driver and the
-            shared libraries it links against — SDL2, FreeType and GTK3, the
-            last for the **Select ROM** dialog. See `README.md` for the exact
+            shared libraries it links against — SDL2, FreeType and libdbus —
+            and, for the **Select ROM** dialog, a running xdg-desktop-portal
+            (standard on GNOME and KDE). See `README.md` for the exact
             list and the packages that provide them.
+
+            The Flatpak package resolves assets internally and uses the
+            desktop portal for the ROM picker dialog.
 
             Requires a GPU with Direct3D 12 (Shader Model 6) or Vulkan 1.2.
             See `README.md` for details.

@@ -503,19 +503,31 @@ regression in the default configuration.
 
 `Expand` widens only RT64's *rendering* viewport. Tooie's own CPU-side visibility
 test still builds a **4:3 frustum**, so anything outside the original view is
-discarded by the game before RT64 sees a display list. The three wrappers are in
+discarded by the game before RT64 sees a display list. The three consumers are in
 **core2**, not in the `bainvisible` overlay:
 
-|Wrapper|Kind|
+|Consumer|Kind|
 |---|---|
 |`func_800E3D0C`|float AABB|
 |`func_800E3DC0`|s16 AABB|
 |`func_800E3E8C`|sphere|
 
-Each sets `$v0 = $v1` immediately before `jr $ra`; `$v0 == 0` means culled, and
-callers branch straight on it. `tooie_expand_visibility` flips that verdict **only
-when `ar_option == Expand`**, reading the applied graphics config directly rather
-than mirroring the frontend's option callback.
+Their verdicts are **not** overridden any more: turning every rejection visible
+defeated selective culling and could exhaust model allocation space. Instead
+`func_800CAF34` — the routine that rebuilds the camera's four planes — is hooked
+before it restores `s0`, and `tooie_expand_frustum` widens and renormalizes only
+the two horizontal planes by `window aspect / (4:3)`. The vertical planes, the
+zoomed FOV and every box/sphere consumer keep their original behaviour; the game
+rebuilds the planes from its cached normals, so widening never accumulates. The
+window size is published from the SDL thread through an atomic. Original, Manual
+and portrait views keep the original planes.
+
+Two further Expand-only defects in the added side regions are fixed separately:
+RT64 tracks framebuffer write bounds against the full viewport/scissor
+intersection for world triangles (`patches/rt64.patch`), and the shared composite
+pickup bowl draw uses the complete model radius so its larger contents are not
+skipped when the bowl alone is culled. Each has a ROM-free regression check under
+`tools/tests/` (`frustum`, `bounds`, `pickups`, `blaster`).
 
 ### 7.2 `Display`/`Manual` refresh distorted the player model
 
@@ -849,11 +861,12 @@ Both Windows x64 and Linux x64 are built, and **one** `release` job publishes
 them together, so the two builds cannot race to create the release and a release
 is never published missing one of its assets.
 
-* **The tag** for a `main` push is `v<base>-build.<run number>`, where `<base>`
-  is the highest plain `vX.Y.Z` tag. It is read with `git ls-remote --tags`
-  rather than `git tag`, because the checkout is `fetch-depth: 1` — a shallow
-  clone has no tags in it at all. (The step is Python, run with `shell: python`,
-  so the same code runs on both runners.)
+* **The tag** for a `main` push is the next patch version: the highest plain
+  `vX.Y.Z` tag with its patch incremented (`v1.0.1`, `v1.0.2`, …). It is read
+  with `git ls-remote --tags` rather than `git tag`, because the checkout is
+  `fetch-depth: 1` — a shallow clone has no tags in it at all. A human tag push
+  moves the base (after `v1.1.0`, branch builds are `v1.1.1`). (The step is
+  Python, run with `shell: python`, so the same code runs on both runners.)
 * **The version is stamped into the executable**, so the launcher's label — and
   any bug report that quotes it — identifies the build. The workflow sets
   `BT_VERSION`; `CMakeLists.txt` turns it into the `BT_VERSION` define; and
@@ -863,9 +876,9 @@ is never published missing one of its assets.
   `-suffix`. `recomp::Version::from_string` accepts nothing else and `main`
   exits with `Invalid version string` on anything else, so the workflow rejects
   a non-conforming tag *before* building rather than shipping an executable that
-  cannot start. `1.0.0-build.7` is fine — the suffix is explicitly allowed.
-  Verified end to end: a build stamped `1.0.0-build.99` boots past the version
-  check with no error.
+  cannot start. `1.0.0` is what the workflow emits now; a manual tag may carry
+  a suffix, and `1.0.0-build.7` is accepted because the suffix is explicitly
+  allowed. Verified end to end with `1.0.0-build.99`.
 * ⚠ **It is an environment variable rather than a `-D` cache entry on purpose.**
   A cache entry persists in `build-cmake/`, so it would keep stamping a stale
   version into local builds long after the workflow that set it had gone.
@@ -891,7 +904,7 @@ written; only the CI job was missing. What the Linux job needs, and why:
 |`clang`|rt64 and N64ModernRuntime pass GCC-style flags and are clang-only by construction. Ubuntu 24.04's clang is 18, which is enough — the LLVM 19 floor is MSVC's STL check, not the code.|
 |`libsdl2-dev`|SDL2, and transitively the X11/Wayland/ALSA headers `SDL_syswm.h` includes.|
 |`libfreetype-dev`|RmlUi's font engine (`Freetype::Freetype`).|
-|`libgtk-3-dev`|nativefiledialog-extended's Linux backend, GTK3 unless `NFD_PORTAL` is set.|
+|`libdbus-1-dev`|nativefiledialog-extended's xdg-desktop-portal backend (`NFD_PORTAL`, forced on for Linux — see below).|
 
 ⚠ **The first Linux run failed twice, and both causes were ours.** Neither was
 visible from Windows, which is the point of building both:
@@ -938,14 +951,19 @@ resolves, that the assets are present and that the version stamp is in the
 binary — nothing more. "Builds" and "runs" are different bars here as everywhere
 else in this file.
 
-⚠ **GTK3 is a runtime dependency of the Linux binary, and it is not obvious.**
-`ldd` on the artifact resolves `libgtk-3.so.0` (plus `libgdk-3`, `libpango`,
-`libcairo`, `libglib`, …) as a direct `DT_NEEDED`: nativefiledialog-extended's
-GTK backend is statically linked in, so its libraries are dependencies of the
-executable rather than something loaded on demand. The full set is
-`libSDL2-2.0.so.0`, `libfreetype.so.6`, `libgtk-3.so.0` and their transitive
-dependencies. Building with `-DNFD_PORTAL=ON` swaps GTK for the
-xdg-desktop-portal backend (`libdbus-1-3`) if that is preferable.
+⚠ **The GTK file dialog segfaulted on "Select ROM"; Linux uses the portal.**
+`NFD_Init` (→ `gtk_init`) runs on the main thread, but recompui opens the
+dialog from its UI thread, and GTK is single-threaded. Three coredumps on the
+first real Linux run all died in `gtk_box_get_content_size` under
+`gtk_file_chooser_dialog_new` ← `NFD_OpenDialogU8`, on a thread that was not
+the main one. `CMakeLists.txt` now sets `NFD_PORTAL=ON` for Linux before
+`add_subdirectory(rt64)` (which owns nfd): the xdg-desktop-portal backend
+talks D-Bus with no thread affinity, and GTK drops out of the binary entirely.
+`DT_NEEDED` is now `libSDL2-2.0.so.0`, `libfreetype.so.6`, `libdbus-1.so.3`
+plus libc/libm/libgcc_s/libatomic. The cost is a running portal service at
+runtime (standard on GNOME/KDE, absent on a bare window manager).
+⚠ It is a non-`FORCE` cache entry, so an *existing* `build-cmake/` configured
+before the change keeps `NFD_PORTAL=OFF` — reconfigure with `-U NFD_PORTAL`.
 
 ⚠ **The Linux package ships a `run.sh` for a reason.** `recompui`'s
 `file::get_program_path()` returns `""` on Linux as well as on Windows (the
@@ -955,6 +973,13 @@ to the executable's own folder — but on Linux it is not, and the failure is
 `Failed to load font face from assets/LatoLatin-Regular.ttf` followed by a
 throw. `run.sh` `cd`s to its own directory first. Anything that launches the
 Linux binary must do the same.
+
+**Flatpak packaging (`flatpak/`).** App ID `io.github.Vidanox.BanjoTooieRecompiled`.
+Built with `-DRECOMP_FLATPAK=ON` and `-DNFD_PORTAL=ON`. This defines
+`RECOMP_FLATPAK` so `recompui::file::get_program_path()` resolves assets directly
+from `/app/bin/assets/`, and configures nativefiledialog-extended to use
+`xdg-desktop-portal` over DBus for the ROM selection dialog. CI builds the
+standalone `.flatpak` bundle after the native Windows and Linux builds succeed.
 
 ---
 
@@ -995,8 +1020,9 @@ Open work, roughly in priority order:
    were both build-time and are fixed (see §11: the shader compiler was only
    selected on Windows, and `recomp_api.cpp` used `RtlCaptureStackBackTrace`
    unconditionally). The first thing to check is that `run.sh` is what the
-   tester uses, because the assets are resolved against the working directory,
-   and the second is `libgtk-3-0`, which `ldd` shows as a direct dependency.
+   tester uses, because the assets are resolved against the working directory.
+   The first run crashed on **Select ROM** (GTK called off its thread); that is
+   fixed by the portal backend (§11) but has not yet been re-tested by hand.
 2. **Licensing on shipped assets.** `assets/Suplexmentary Comic NC.ttf` carries
    "All rights reserved" with no license, and the 11 icons in `assets/icons/`
    came from the same source. This blocks a public release.

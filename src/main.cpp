@@ -64,6 +64,7 @@
 #include "funcs.h"
 #include "register_overlays.hpp"
 #include "rom_decompression.hpp"
+#include "tooie_visibility.hpp"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -137,6 +138,8 @@ ultramodern::renderer::WindowHandle create_window(
         exit_error("Failed to create window: %s\n", SDL_GetError());
     }
 
+    tooie::visibility::update_display_size(1600, 900);
+
     SDL_SysWMinfo wm_info;
     SDL_VERSION(&wm_info.version);
     SDL_GetWindowWMInfo(window, &wm_info);
@@ -155,6 +158,9 @@ ultramodern::renderer::WindowHandle create_window(
 
 void update_gfx(void*) {
     recompinput::handle_events();
+    int width = 0, height = 0;
+    SDL_GetWindowSize(window, &width, &height);
+    tooie::visibility::update_display_size(width, height);
 }
 
 // --- Audio -----------------------------------------------------------------
